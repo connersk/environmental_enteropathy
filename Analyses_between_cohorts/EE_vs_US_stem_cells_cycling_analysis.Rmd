@@ -1,0 +1,188 @@
+---
+title: "Epithelial stem cell cycle analysis"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(tidyverse)
+```
+
+# Analyzing how cell cycyle score varies between stem cells in EE vs U.S. cohorts
+
+```{r}
+combined = readRDS("combined_iterate_jan13.rds")
+combined_duo = subset(combined,region=="Duodenum") %>%subset(HIV.HTLV.=="N")
+```
+
+```{r}
+macosko = read.table("../macosko_cell_cycle/Macosko_cell_cycle_genes.txt",sep="\t",header = 1)
+```
+
+```{r}
+combined_duo  = AddModuleScore(combined_duo,features=list(macosko[,1]),name="mac_IG1.S")
+combined_duo  = AddModuleScore(combined_duo,features=list(macosko[,2]),name="mac_S")
+combined_duo  = AddModuleScore(combined_duo,features=list(macosko[,1]),name="mac_G2.M")
+combined_duo  = AddModuleScore(combined_duo,features=list(macosko[,2]),name="mac_M")
+combined_duo  = AddModuleScore(combined_duo,features=list(macosko[,1]),name="mac_M.G1")
+
+```
+
+```{r}
+all_cell_cycle = c(macosko[,1],macosko[,2],macosko[,3],macosko[,4])
+combined_duo  = AddModuleScore(combined_duo,features=list(all_cell_cycle),name="mac_all")
+```
+
+```{r}
+epi = subset(combined_duo,tier1=="Epi")
+stem = subset(combined_duo,tier2=="Stem")
+lgr5= subset(combined_duo,tier4=="Stem OLFM4 LGR5")
+```
+
+```{r}
+cycl= subset(combined_duo,tier4=="Stem cycling")
+```
+
+
+```{r}
+apoa = subset(combined_duo,tier4=="Ent APOA ALPI")
+```
+
+```{r}
+epi = subset(combined,tier1=="Epi")
+```
+
+
+```{r}
+VlnPlot(epi,c("mac_IG1.S1","mac_S1","mac_G2.M1","mac_M1","mac_M.GS.S1","mac_all1"),pt.size=0.0,group.by="study") 
+```
+
+```{r}
+all_cell_cycle  = all_cell_cycle[all_cell_cycle!=""]
+```
+
+
+
+```{r}
+sobj=stem
+module = "mac_all1"
+print("ee")
+mean(sobj@meta.data[sobj$study=="EE",module])
+print("eoe")
+mean(sobj@meta.data[sobj$study=="EoE",module])
+print("resection")
+mean(sobj@meta.data[sobj$study=="Resection",module])
+print("pvalue")
+wilcox.test(sobj@meta.data[sobj$study=="EE",module],sobj@meta.data[sobj$study!="EE",module])
+print("effect size")
+cohen.d(sobj@meta.data[sobj$study=="EE",module],sobj@meta.data[sobj$study!="EE",module])
+```
+
+
+# Corrleataing EE severity score with cell cyle
+
+```{r}
+setwd("~/Dropbox (MIT)/Zambia/reseq_analysis/histology_scoring")
+histology = read.csv("EED_histology_cleaned.csv")
+# Extracting out the valid ranges for each scoring metric
+ranges_for_histology = histology[1,]
+names(ranges_for_histology) = colnames(histology)
+ranges_for_histology = ranges_for_histology[-1]
+ranges_for_histology = ranges_for_histology[-length(ranges_for_histology)]
+# subsetting the histology down to just the values
+histology = histology[-1,]
+scores_histology = histology[,-1]
+scores_histology = scores_histology[,-ncol(scores_histology)]
+rownames(scores_histology) = histology[,1]
+# subsetting down to the values for the EED patients
+study_samples = unique(combined$old_orig)
+study_histology = scores_histology[rownames(scores_histology) %in% study_samples,]
+for(i in 1:ncol(study_histology)){
+    study_histology[,i] = as.numeric(as.character(study_histology[,i]))
+}
+study_histology$sum = rowSums(study_histology)
+# # getting the histology comments
+comments = histology[,ncol(histology)]
+names(comments) = histology[,1]
+comments = comments[names(comments) %in% study_samples]
+
+orig_key = distinct(combined@meta.data,orig.ident,old_orig)
+for(i in 1:nrow(study_histology)){
+    rownames(study_histology)[i] = orig_key$orig.ident[orig_key$old_orig==rownames(study_histology)[i]]
+}
+
+study_histology = study_histology[order(rownames(study_histology)),]
+
+eed_histo = subset(combined,orig.ident%in%rownames(study_histology))
+eed_only = subset(eed_histo,HIV.HTLV.=="N")
+study_no_hiv = study_histology[rownames(study_histology)%in% unique(eed_only$orig.ident),]
+
+colnames(study_no_hiv) = c("Acute LP Inflammation",
+                         "Chronic LP Inflammation",
+                          "Increased IEL Infiltration",
+                          "Shortened Villus Architecture",
+                          "Intramucosal Brunner's Glands",
+                          "Decreased Goblet Density",
+                          "Decreased Paneth Density",
+                          "Increased Enterocyte Injury",
+                          "Increased Epithelial Detachment",
+                          "Increased Lymphoid Aggregates",
+                          "Total Histological Score")
+
+colnames(study_histology) = c("Acute LP Inflammation",
+                         "Chronic LP Inflammation",
+                          "Increased IEL Infiltration",
+                          "Shortened Villus Architecture",
+                          "Intramucosal Brunner's Glands",
+                          "Decreased Goblet Density",
+                          "Decreased Paneth Density",
+                          "Increased Enterocyte Injury",
+                          "Increased Epithelial Detachment",
+                          "Increased Lymphoid Aggregates",
+                          "Total Histological Score")
+
+study_no_hiv$orig.ident = rownames(study_no_hiv)
+temp = eed_only@meta.data
+temp = left_join(temp,study_no_hiv,by="orig.ident")
+```
+
+```{r}
+all_cell_cycle = c(macosko[,1],macosko[,2],macosko[,3],macosko[,4])
+eed_only  = AddModuleScore(eed_only,features=list(all_cell_cycle),name="mac_all")
+```
+
+
+```{r}
+stem_eed = subset(eed_only,tier2=="Stem")
+olfm4_eed = subset(eed_only,tier4=="Stem OLFM4")
+cycling_eed = subset(eed_only,tier4=="Stem cycling")
+lgr5_eed = subset(eed_only,tier4=="Stem OLFM4 LGR5")
+```
+
+
+```{r}
+stem_temp = stem_eed@meta.data
+stem_temp = left_join(stem_temp,study_no_hiv,by="orig.ident")
+
+cycling_temp = cycling_eed@meta.data
+cycling_temp = left_join(cycling_temp,study_no_hiv,by="orig.ident")
+
+olfm4_temp = olfm4_eed@meta.data
+olfm4_temp = left_join(olfm4_temp,study_no_hiv,by="orig.ident")
+
+lgr5_temp = lgr5_eed@meta.data
+lgr5_temp = left_join(lgr5_temp,study_no_hiv,by="orig.ident")
+```
+
+```{r}
+print(cor(stem_temp$`Total Histological Score`,stem_temp$mac_all1))
+print(cor(cycling_temp$`Total Histological Score`,cycling_temp$mac_all1))
+print(cor(olfm4_temp$`Total Histological Score`,olfm4_temp$mac_all1))
+print(cor(lgr5_temp$`Total Histological Score`,lgr5_temp$mac_all1))
+```
+
+```{r}
+temp = combined@meta.data %>% distinct_at(vars(orig.ident),.keep_all = T)
+temp = temp[,colnames(temp)%in%c("orig.ident","old_orig")]
+```
+

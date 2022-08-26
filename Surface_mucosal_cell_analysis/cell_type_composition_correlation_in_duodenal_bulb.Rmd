@@ -1,0 +1,216 @@
+---
+title: "better_correlation_composition"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(viridis)
+library(scales) 
+library(ComplexHeatmap)
+library(reshape2)
+source("../../helper_scripts/plot_cluster_meta_percentage.R")
+source("correlation_helpers.R")
+```
+
+```{r}
+combined= readRDS("../combined_iterate_jan13.rds")
+combined_duo = subset(combined,region=="Duodenum")  %>% subset(HIV.HTLV.=="N")
+```
+
+# Correlations within the epithelium across only EE duodenal bulb samples
+
+```{r}
+ee_bulb_epi_only = subset(combined,study=="EE") %>% subset(tier1=="Epi") %>% subset(region=="Bulb")
+```
+
+```{r}
+# Running correlations over all subsets, this is probably wrong all things considered bc I'm not binning by abundance and therefore its much easier for lowly abundance to look sig.
+temp = ee_bulb_epi_only
+cor_method = "pearson"
+meta = temp@meta.data
+
+meta$tier4 = as.character(meta$tier4)
+num_types = length(unique(meta$tier4))
+
+num_permutations = 10000
+num_values = num_types*num_types - num_types
+values = rep(0,num_permutations*num_values)
+for(n in 1:num_permutations){
+  if(n %% 100 == 0){
+    print(n)
+  }
+  meta$cell_types = meta$tier4
+  t4 = unique(meta$cell_types)
+  meta$orig.ident = sample(meta$orig.ident)
+  all_counts = generate_all_counts(meta)
+  comp_corrs = matrix(rep(0,length(t4)*length(t4)),length(t4),length(t4))
+  rownames(comp_corrs) = t4
+  colnames(comp_corrs) = t4
+  for(i in 1:length(t4)){
+    #     print(t4[i])
+    for(j in 1:length(t4)){
+      #         print(t4[j])
+      comp_corrs[i,j] = cor(all_counts$percent_of_sample[all_counts$cell_types==t4[i]],all_counts$percent_of_sample[all_counts$cell_types==t4[j]],method = cor_method)
+    }
+  }
+  flat_values = comp_corrs[row(comp_corrs)!=col(comp_corrs)]
+  values[1+(num_values*(n-1)):(num_values*(n)-1)] = flat_values
+}
+saveRDS(values,"ee_epi_bulb_null_distribution_samples.rds")
+```
+
+```{r}
+# Going to just run on surface mucosal cells to makes simpler
+temp = ee_bulb_epi_only
+cor_method = "pearson"
+meta = temp@meta.data
+
+meta$tier4 = as.character(meta$tier4)
+meta$cell_types = meta$tier4
+num_types = length(unique(meta$tier4))
+
+num_permutations = 10000
+num_values = num_types-1
+values = rep(0,num_permutations*num_values)
+final_values=matrix(rep(0,num_types*num_permutations),nrow = num_types,ncol=num_permutations)
+t4 = unique(meta$cell_types)
+rownames(final_values) = t4
+for(n in 1:num_permutations){
+  if(n %% 100 == 0){
+    print(n)
+  }
+  meta$orig.ident = sample(meta$orig.ident)
+  all_counts = generate_all_counts(meta)
+  for(i in 1:length(t4)){
+    #     print(t4[i])
+    final_values[i,n] = cor(all_counts$percent_of_sample[all_counts$cell_types==t4[i]],all_counts$percent_of_sample[all_counts$cell_types=="Surface mucosal"],method = cor_method)
+  }
+}
+saveRDS(final_values,"ee_epi_bulb_null_distribution_samples_for_SCM_by_cell_type.rds")
+```
+
+
+```{r}
+ee__bulb_epi_corrs = readRDS("subset_correlations_ee_bulb_epi_only.rds")
+
+final_values =readRDS("ee_epi_bulb_null_distribution_samples_for_SCM_by_cell_type.rds")
+```
+
+```{r}
+scm_corrs = ee__bulb_epi_corrs[rownames(ee__bulb_epi_corrs)=="Surface mucosal",]
+sig_corrs = rep(F,length(scm_corrs))
+for(i in 1:length(scm_corrs)){
+  null_dist = final_values[rownames(final_values)==names(scm_corrs[i])]
+  threshold = 0.1
+  min_value = quantile(null_dist,threshold)
+  max_value = quantile(null_dist,1-threshold)
+  if(scm_corrs[i] > max_value | scm_corrs[i]<min_value){
+    sig_corrs[i] = TRUE
+  }
+}
+scm_corrs[sig_corrs]
+```
+
+
+```{r}
+threshold = 0.25
+min_value = quantile(values,threshold)
+max_value = quantile(values,1-threshold)
+corr_matrix = ee__bulb_epi_corrs
+# corr_matrix[corr_matrix < max_value & corr_matrix > min_value] = 0
+corr_matrix[corr_matrix < threshold & corr_matrix > -1*threshold] = 0
+num_splits = 4
+# colors_for_highlight = c(rep(cell_type_colors[13],4),rep("white",4),rep(cell_type_colors[12],3),rep("white",num_blue))
+Heatmap(corr_matrix,
+        row_split = num_splits,column_split = num_splits,
+        name="Pearson\ncorrelation",
+        row_title = rep("",num_splits),column_title = rep("",num_splits),
+        row_names_gp = gpar( col = "black", border = "white",fontsize=8),
+        column_names_gp = gpar( col = "black", border = "white",fontsize=8))
+```
+
+
+
+
+```{r}
+pdf("~/zambia_eed_figures/diff-comp-figure/ee_bulb_correlations_0.1_up_down_percentile.pdf",useDingbats = F)
+threshold = 0.1
+min_value = quantile(values,threshold)
+max_value = quantile(values,1-threshold)
+corr_matrix = ee__bulb_epi_corrs
+corr_matrix[corr_matrix < max_value & corr_matrix > min_value] = 0
+# corr_matrix[corr_matrix < threshold & corr_matrix > -1*threshold] = 0
+num_splits =5
+Heatmap(corr_matrix,
+        row_split = num_splits, column_split = num_splits,
+        name="Pearson\ncorrelation",
+        row_title = rep("",num_splits),column_title = rep("",num_splits),
+        row_names_gp = gpar( col = "black", border = "white",fontsize=8),
+        column_names_gp = gpar( col = "black", border = "white",fontsize=8))
+dev.off()
+```
+
+```{r}
+pdf("~/zambia_eed_figures/diff-comp-figure/ee_bulb_correlations_all.pdf",useDingbats = T)
+corr_matrix = ee__bulb_epi_corrs
+num_splits =4
+Heatmap(corr_matrix,
+        row_split = num_splits, column_split = num_splits,
+        name="Pearson\ncorrelation",
+        row_title = rep("",num_splits),column_title = rep("",num_splits),
+        row_names_gp = gpar( col = "black", border = "white",fontsize=8),
+        column_names_gp = gpar( col = "black", border = "white",fontsize=8))
+dev.off()
+```
+
+```{r}
+corr_matrix = ee__bulb_epi_corrs
+num_splits =6
+Heatmap(corr_matrix,
+        row_km = num_splits, column_km = num_splits,
+        name="Pearson\ncorrelation",
+        row_title = rep("",num_splits),column_title = rep("",num_splits),
+        row_names_gp = gpar( col = "black", border = "white",fontsize=8),
+        column_names_gp = gpar( col = "black", border = "white",fontsize=8))
+```
+
+
+```{r}
+# pdf("~/zambia_eed_figures/diff-comp-figure/ee_bulb_correlations_0.25_threshold.pdf",useDingbats = F)
+threshold = 0.025
+min_value = quantile(values,threshold)
+max_value = quantile(values,1-threshold)
+corr_matrix = ee__bulb_epi_corrs
+corr_matrix[corr_matrix < max_value & corr_matrix > min_value] = 0
+# corr_matrix[corr_matrix < 0.25 & corr_matrix > -0.25] = 0
+num_splits =5
+Heatmap(corr_matrix,
+        row_split = num_splits, column_split = num_splits,
+        name="Pearson\ncorrelation",
+        row_title = rep("",num_splits),column_title = rep("",num_splits),
+        row_names_gp = gpar( col = "black", border = "white",fontsize=8),
+        column_names_gp = gpar( col = "black", border = "white",fontsize=8))
+# dev.off()
+```
+
+```{r}
+corr_matrix = ee__bulb_epi_corrs
+# corr_matrix[corr_matrix < max_value & corr_matrix > min_value] = 0
+corr_matrix[corr_matrix < 0.25 & corr_matrix > -0.25] = 0
+corrs_table = as_tibble(corr_matrix,rownames="cellA")
+plot_corrs = pivot_longer(corrs_table,cols=colnames(corrs_table)[-1], names_to="cellB",values_to="pearson")
+```
+
+
+
+```{r}
+ggplot(plot_corrs,aes(x=cellA,y=cellB,fill=pearson)) + geom_tile() +
+  scale_fill_gradientn(colours = c("blue", "white", "white", "red"),
+                       breaks=c(-1,-0.25,0.25,1,Inf),
+                       na.value = "black",limits=c(-1,1)) 
+```
+
+
+

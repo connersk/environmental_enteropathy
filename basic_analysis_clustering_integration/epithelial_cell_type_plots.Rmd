@@ -1,0 +1,206 @@
+---
+title: "Extended data figure: Additional analysis on epithelial cells"
+output: html_notebook
+---
+
+# Loading libraries and data
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+set.seed(47)
+options(repr.plot.width = 8, repr.plot.height = 8)
+source("../../helper_scripts/plot_cluster_meta_percentage.R")
+```
+
+```{r}
+cell_type_colors = readRDS("../cell_type_colors.rds")
+disease_colors = readRDS("../disease_colors.rds")
+region_colors = readRDS("../region_colors.rds")
+hiv_colors = readRDS("../hiv_colors.rds")
+```
+
+```{r}
+names(table(epi$tier4))
+```
+
+
+```{r}
+epi = readRDS("epi_durban_eoe_resection_no_sa_HIV_aug18.rds")
+origs = names(table(epi$orig.ident))
+epi$orig.ident = factor(epi$orig.ident,
+                             levels=origs[c(36:38,1:35)])
+```
+
+```{r}
+names(table(epi$tier4))
+```
+
+
+```{r}
+secretory = names(table(epi$tier4))[c(18,15,17,1:5,13,23)]
+ent = names(table(epi$tier4))[c(12,8:9,11,10)]
+stem = names(table(epi$tier4))[c(21,20,19)]
+bulb = names(table(epi$tier4))[c(22,6:7,14,16)]
+reordered_cell_types <- c(stem,ent,secretory,bulb)
+epi$tier4 <- factor(epi$tier4, levels = reordered_cell_types)
+```
+
+
+```{r}
+reordered_cell_types
+```
+
+
+
+```{r}
+markers = readRDS("../heatmap_markers/combined_heatmap_wilcox_markers_oct21.rds")
+```
+
+
+```{r}
+stem = subset(epi = )
+```
+
+
+```{r}
+markers %>% filter(cluster=="Stem OLFM4")
+```
+
+```{r}
+markers %>% filter(cluster=="Stem OLFM4 LGR5")
+```
+
+
+
+```{r}
+smc = markers %>% filter(cluster=="Surface mucosal") %>% filter(avg_logFC>0)
+mn = markers %>% filter(cluster=="Mucosal neck") %>% filter(avg_logFC>0)
+goblet = markers %>% filter(cluster=="Goblet") %>% filter(avg_logFC>0)
+fp = markers %>% filter(cluster=="Foveolar precursor") %>% filter(avg_logFC>0)
+```
+
+```{r}
+write.csv(smc,"../muc_producing_cells_marker_genes/surface_mucosal_markers.csv")
+write.csv(mn,"../muc_producing_cells_marker_genes/mucosal_neck_markers.csv")
+write.csv(goblet,"../muc_producing_cells_marker_genes/goblet_markers.csv")
+write.csv(fp,"../muc_producing_cells_marker_genes/foveolar_precursor_markers.csv")
+```
+
+
+
+# UMI and gene violins
+```{r}
+pdf("~/zambia_eed_figures/supp-1/epi_umis.pdf",useDingbats = F)
+VlnPlot(epi,"nCount_RNA",group.by="tier4",cols=cell_type_colors,pt.size=0.1)+ NoLegend() +
+    xlab("Cell subset") + ylab("Number of UMIs per cell") + ggtitle("")+theme(axis.text.x=element_text(angle=60,hjust=1))
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/epi_genes.pdf",useDingbats = F)
+VlnPlot(epi,"nFeature_RNA",group.by="tier4",cols=cell_type_colors,pt.size=0.1)+ NoLegend() +
+    xlab("Cell subset") + ylab("Number of unique genes per cell") + ggtitle("") +theme(axis.text.x=element_text(angle=60,hjust=1))
+dev.off()
+```
+# Study, region, and HIV umaps
+```{r}
+pdf("~/zambia_eed_figures/supp-1/epi_tier4.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_no_legend(epi,group.by="tier4",cols = cell_type_colors)
+dev.off()
+
+pdf("~/zambia_eed_figures/supp-1/epi_study.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_legend(epi,group.by="study",cols = cell_type_colors)
+dev.off()
+
+pdf("~/zambia_eed_figures/supp-1/epi_region.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_legend(epi,group.by="region",cols = region_colors)
+dev.off()
+
+# pdf("~/zambia_eed_figures/supp-1/epi_hiv.pdf",useDingbats = FALSE,width = 8,height=8)
+# umap_legend(epi,group.by="HIV.HTLV.",cols = hiv_colors)
+# dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Study, region, and HIV barplots
+```{r}
+# pdf("~/zambia_eed_figures/supp-1/epi_hiv_composition.pdf",useDingbats = F)
+# 
+# plot_x_by_y_percentage_legend(epi,x.group="tier4",y.group = "HIV.HTLV.",colors = hiv_colors,
+#                       x_lab="Cell subsets",y_lab="Fractional of cells in subset",legend_label="HIV Status")
+# dev.off()
+pdf("~/zambia_eed_figures/supp-1/epi_region_composition.pdf",useDingbats = F)
+
+plot_x_by_y_percentage_legend(epi,x.group="tier4",y.group = "region",colors = region_colors,
+                      x_lab="Cell subsets",y_lab="Fractional of cells in subset",legend_label="Intestinal Region")
+dev.off()
+x= cell_type_colors[6]
+# epi$HIV.HTLV.[epi$HIV.HTLV. =="Y"] = "Positive"
+# epi$HIV.HTLV.[epi$HIV.HTLV. =="N"] = "Negative"
+epi$study = as.character(epi$study)
+epi$study[epi$study=="EE"&epi$HIV.HTLV.=="Y"] = "EE HIV+"
+epi$study = factor(epi$study,levels=c("EE","EE HIV+","EoE","Resection"))
+pdf("~/zambia_eed_figures/supp-1/epi_disease_composition.pdf",useDingbats = F)
+
+plot_x_by_y_percentage_legend(epi,x.group="tier4",y.group = "study",colors = c(disease_colors[1],x,disease_colors[c(3,4)]),
+                      x_lab="Cell subsets",y_lab="Fractional of cells in subset",legend_label="Patient Cohort")
+dev.off()
+```
+
+```{r}
+combined_duo = subset(combined,region=="Duodenum") %>% subset(HIV.HTLV.=="N")
+```
+
+```{r}
+saveRDS(combined_duo,"../../data_for_lyndsay/ee_distal_duodenal_data.rds")
+```
+
+
+
+# Heatmap
+```{r}
+subset_markers = readRDS("../heatmap_markers/combined_heatmap_wilcox_markers_oct21.rds")
+subset_markers$cluster = as.character(subset_markers$cluster)
+subset_markers$cluster[subset_markers$cluster=="Bulb TFF2 LYZ"] = "Epi LYZ TFF2"
+subset_markers$cluster[subset_markers$cluster=="Bulb OLFM4"] = "Epi LYZ DMBT1"
+subset_markers$cluster[subset_markers$cluster=="Bulb TFF1 GKN1"] = "Epi DPCR1 TFF1"
+subset_markers$cluster[subset_markers$cluster=="Bulb FABP1"] = "Epi FABP1 CD55"
+subset_markers$cluster[subset_markers$cluster=="Bulb PTMA"] = "Epi FABP1 PTMA"
+subset_markers$cluster[subset_markers$cluster=="Ent HIV IFN"] = "Ent ISG15 IFI6"
+subset_markers$cluster = as.factor(subset_markers$cluster)
+
+top_genes <- c()
+for(cell_type in reordered_cell_types){
+    markers <- subset_markers[subset_markers$cluster==cell_type,]
+    top_genes <- c(top_genes,markers$gene[1:5])
+}
+# Randomly sampling 10 cells for each subtype
+n_per_celltype = 10
+downsampled_cells = c()
+for(cell_type in reordered_cell_types){
+    downsampled_cells <- c(downsampled_cells, sample(rownames(epi@meta.data)[epi$tier4==cell_type],10))
+}
+
+temp = epi
+temp = ScaleData(temp,features=rownames(temp))
+pdf("~/zambia_eed_figures/supp-1/epi_heatmap.pdf",useDingbats = F,width=5,height=5)
+DoHeatmap(temp,cell=downsampled_cells,features=top_genes,group.by="tier4",size=1.5,angle=60,
+    hjust=0.05,raster=FALSE,group.colors = cell_type_colors) + 
+    theme(axis.text.y = element_text(size = 3.5)) + ggtitle("")  + NoLegend()+
+    scale_fill_gradientn(colors = colorRampPalette(c("blue", "white", "red"))(256))
+dev.off()
+```
+
+
+

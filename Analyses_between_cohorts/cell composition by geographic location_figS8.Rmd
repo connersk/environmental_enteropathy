@@ -1,0 +1,455 @@
+---
+title: "Compositional analysis: pairwise between three geographic locations (Zambia, South Africa, U.S)"
+output: html_notebook
+---
+
+# Load in helper functions, packages, seurat object
+
+```{r}
+source("EE_vs_all_control_cohorts_analysis_helper_functions.R")
+```
+
+
+```{r}
+library(Seurat)
+library(tidyverse)
+```
+
+```{r}
+disease_colors = readRDS("../reseq_analysis/disease_colors.rds")
+disease_colors = c(disease_colors,"#fc9350")
+saveRDS(disease_colors,"../reseq_analysis/disease_colors.rds")
+```
+
+```{r}
+combined_duo = subset(combined,region=="Duodenum") %>% subset(HIV.HTLV.=="N")
+```
+
+# Composition analyses over all cells
+
+```{r}
+# Zambia vs U.S.
+combined_duo_ee_no_durban = subset(combined_duo,study!="Durban")
+combined_duo_ee_eoe = subset(combined_duo,study!="Resection")  %>% subset(study!="Durban")
+combined_duo_ee_resection = subset(combined_duo,study!="EoE") %>%  subset(study!="Durban")
+combined_duo_ee_durban = subset(combined_duo,study!="EoE") %>% subset(study!="Resection")
+print(table(combined_duo_ee_durban$study))
+print(table(combined_duo_ee_eoe$study))
+print(table(combined_duo_ee_resection$study))
+
+composition_ee_vs_all = fisher_composition_test(combined_duo_ee_no_durban,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+composition_ee_vs_eoe = fisher_composition_test(combined_duo_ee_eoe,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+composition_ee_vs_resection = fisher_composition_test(combined_duo_ee_resection,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/zambia_vs_us_all_compartments.rds")
+```
+
+```{r}
+# Durban vs. U.S
+combined_duo_durban_no_ee = subset(combined_duo,study!="EE")
+combined_duo_durban_eoe = subset(combined_duo,study!="Resection")  %>% subset(study!="EE")
+combined_duo_durban_resection = subset(combined_duo,study!="EoE") %>%  subset(study!="EE")
+composition_durban_vs_all = fisher_composition_test(combined_duo_durban_no_ee,"tier4","study","Durban",unique_types = unique(combined_duo$tier4))
+composition_durban_vs_eoe = fisher_composition_test(combined_duo_durban_eoe,"tier4","study","Durban",unique_types = unique(combined_duo$tier4))
+composition_durban_vs_resection = fisher_composition_test(combined_duo_durban_resection,"tier4","study","Durban",unique_types = unique(combined_duo$tier4))
+
+sig_vs_all = composition_durban_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_durban_vs_eoe$sign[composition_durban_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_durban_vs_resection$sign[composition_durban_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/durban_vs_us_all_compartments.rds")
+```
+
+```{r}
+# Durban vs Zambia
+combined_duo_durban_ee = subset(combined_duo,study!="EoE") %>% subset(study!="Resection")
+composition_durban_vs_ee = fisher_composition_test(combined_duo_durban_ee,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+
+final_sig  = composition_durban_vs_ee %>% filter(max_adj_pvals < 0.05)
+saveRDS(final_sig,"composition/durban_vs_zambia_all_compartments.rds")
+```
+
+
+# Composition analyses over only epithelial cells
+
+```{r}
+epi = subset(combined_duo,tier1=="Epi")
+```
+
+```{r}
+# Zambia vs U.S.
+epi_ee_no_durban = subset(epi,study!="Durban")
+epi_ee_eoe = subset(epi,study!="Resection")  %>% subset(study!="Durban")
+epi_ee_resection = subset(epi,study!="EoE") %>%  subset(study!="Durban")
+epi_ee_durban = subset(epi,study!="EoE") %>% subset(study!="Resection")
+print(table(epi_ee_durban$study))
+print(table(epi_ee_eoe$study))
+print(table(epi_ee_resection$study))
+
+composition_ee_vs_all = fisher_composition_test(epi_ee_no_durban,"tier4","study","EE",unique_types = unique(epi$tier4))
+composition_ee_vs_eoe = fisher_composition_test(epi_ee_eoe,"tier4","study","EE",unique_types = unique(epi$tier4))
+composition_ee_vs_resection = fisher_composition_test(epi_ee_resection,"tier4","study","EE",unique_types = unique(epi$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/zambia_vs_us_epi_compartments.rds")
+```
+
+```{r}
+# Durban vs. U.S
+epi_durban_no_ee = subset(epi,study!="EE")
+epi_durban_eoe = subset(epi,study!="Resection")  %>% subset(study!="EE")
+epi_durban_resection = subset(epi,study!="EoE") %>%  subset(study!="EE")
+composition_durban_vs_all = fisher_composition_test(epi_durban_no_ee,"tier4","study","Durban",unique_types = unique(epi$tier4))
+composition_durban_vs_eoe = fisher_composition_test(epi_durban_eoe,"tier4","study","Durban",unique_types = unique(epi$tier4))
+composition_durban_vs_resection = fisher_composition_test(epi_durban_resection,"tier4","study","Durban",unique_types = unique(epi$tier4))
+
+sig_vs_all = composition_durban_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_durban_vs_eoe$sign[composition_durban_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_durban_vs_resection$sign[composition_durban_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/durban_vs_us_epi_compartments.rds")
+```
+
+```{r}
+# Durban vs Zambia
+epi_durban_ee = subset(epi,study!="EoE") %>% subset(study!="Resection")
+composition_durban_vs_ee = fisher_composition_test(epi_durban_ee,"tier4","study","EE",unique_types = unique(epi$tier4))
+
+final_sig  = composition_durban_vs_ee %>% filter(max_adj_pvals < 0.05)
+saveRDS(final_sig,"composition/durban_vs_zambia_epi_compartments.rds")
+```
+# Composition analyses over only T & NK cells
+
+```{r}
+tnk = subset(combined_duo,tier1=="TNK")
+```
+
+```{r}
+# Zambia vs U.S.
+tnk_ee_no_durban = subset(tnk,study!="Durban")
+tnk_ee_eoe = subset(tnk,study!="Resection")  %>% subset(study!="Durban")
+tnk_ee_resection = subset(tnk,study!="EoE") %>%  subset(study!="Durban")
+tnk_ee_durban = subset(tnk,study!="EoE") %>% subset(study!="Resection")
+print(table(tnk_ee_durban$study))
+print(table(tnk_ee_eoe$study))
+print(table(tnk_ee_resection$study))
+
+composition_ee_vs_all = fisher_composition_test(tnk_ee_no_durban,"tier4","study","EE",unique_types = unique(tnk$tier4))
+composition_ee_vs_eoe = fisher_composition_test(tnk_ee_eoe,"tier4","study","EE",unique_types = unique(tnk$tier4))
+composition_ee_vs_resection = fisher_composition_test(tnk_ee_resection,"tier4","study","EE",unique_types = unique(tnk$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/zambia_vs_us_tnk_compartments.rds")
+```
+
+```{r}
+# Durban vs. U.S
+tnk_durban_no_ee = subset(tnk,study!="EE")
+tnk_durban_eoe = subset(tnk,study!="Resection")  %>% subset(study!="EE")
+tnk_durban_resection = subset(tnk,study!="EoE") %>%  subset(study!="EE")
+composition_durban_vs_all = fisher_composition_test(tnk_durban_no_ee,"tier4","study","Durban",unique_types = unique(tnk$tier4))
+composition_durban_vs_eoe = fisher_composition_test(tnk_durban_eoe,"tier4","study","Durban",unique_types = unique(tnk$tier4))
+composition_durban_vs_resection = fisher_composition_test(tnk_durban_resection,"tier4","study","Durban",unique_types = unique(tnk$tier4))
+
+sig_vs_all = composition_durban_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_durban_vs_eoe$sign[composition_durban_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_durban_vs_resection$sign[composition_durban_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/durban_vs_us_tnk_compartments.rds")
+```
+
+```{r}
+# Durban vs Zambia
+tnk_durban_ee = subset(tnk,study!="EoE") %>% subset(study!="Resection")
+composition_durban_vs_ee = fisher_composition_test(tnk_durban_ee,"tier4","study","EE",unique_types = unique(tnk$tier4))
+
+final_sig  = composition_durban_vs_ee %>% filter(max_adj_pvals < 0.05)
+saveRDS(final_sig,"composition/durban_vs_zambia_tnk_compartments.rds")
+```
+
+# Composition analyses over only B cells, myeloid cells, and stromal cells
+
+```{r}
+bms = subset(combined_duo,tier1%in%c("B cells","Myeloid","Stromal"))
+```
+
+```{r}
+# Zambia vs U.S.
+bms_ee_no_durban = subset(bms,study!="Durban")
+bms_ee_eoe = subset(bms,study!="Resection")  %>% subset(study!="Durban")
+bms_ee_resection = subset(bms,study!="EoE") %>%  subset(study!="Durban")
+bms_ee_durban = subset(bms,study!="EoE") %>% subset(study!="Resection")
+print(table(bms_ee_durban$study))
+print(table(bms_ee_eoe$study))
+print(table(bms_ee_resection$study))
+
+composition_ee_vs_all = fisher_composition_test(bms_ee_no_durban,"tier4","study","EE",unique_types = unique(bms$tier4))
+composition_ee_vs_eoe = fisher_composition_test(bms_ee_eoe,"tier4","study","EE",unique_types = unique(bms$tier4))
+composition_ee_vs_resection = fisher_composition_test(bms_ee_resection,"tier4","study","EE",unique_types = unique(bms$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/zambia_vs_us_bms_compartments.rds")
+```
+
+```{r}
+# Durban vs. U.S
+bms_durban_no_ee = subset(bms,study!="EE")
+bms_durban_eoe = subset(bms,study!="Resection")  %>% subset(study!="EE")
+bms_durban_resection = subset(bms,study!="EoE") %>%  subset(study!="EE")
+composition_durban_vs_all = fisher_composition_test(bms_durban_no_ee,"tier4","study","Durban",unique_types = unique(bms$tier4))
+composition_durban_vs_eoe = fisher_composition_test(bms_durban_eoe,"tier4","study","Durban",unique_types = unique(bms$tier4))
+composition_durban_vs_resection = fisher_composition_test(bms_durban_resection,"tier4","study","Durban",unique_types = unique(bms$tier4))
+
+sig_vs_all = composition_durban_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  eoe_sign = composition_durban_vs_eoe$sign[composition_durban_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_durban_vs_resection$sign[composition_durban_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(eoe_sign==resection_sign & eoe_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/durban_vs_us_bms_compartments.rds")
+```
+
+```{r}
+# Durban vs Zambia
+bms_durban_ee = subset(bms,study!="EoE") %>% subset(study!="Resection")
+composition_durban_vs_ee = fisher_composition_test(bms_durban_ee,"tier4","study","EE",unique_types = unique(bms$tier4))
+
+final_sig  = composition_durban_vs_ee %>% filter(max_adj_pvals < 0.05)
+saveRDS(final_sig,"composition/durban_vs_zambia_bms_compartments.rds")
+```
+
+# Plotting
+
+## Helper functions
+
+```{r}
+plot_composition_with_labels = function(final_sig_cell_types,s_obj,use_colors){
+  s_obj$cell_types = s_obj$tier4
+  meta = combined_duo@meta.data %>% group_by(tier1,tier2,tier3,tier4)  %>% summarise(n())
+  all_counts = generate_all_counts(s_obj@meta.data)
+  temp = all_counts
+  less_types = as.character(final_sig_cell_types$cell_type)
+# 
+#   less_types =meta$tier4[meta$tier1==compartment][meta$tier4[meta$tier1==compartment] %in% less_types]
+
+  temp = temp[temp$cell_types %in% less_types,]
+temp$cell_types <- factor(temp$cell_types,
+    levels = less_types)
+  options(repr.plot.width = 10, repr.plot.height = 8)
+  
+  temp$study = factor(temp$study,levels=c("Durban","EE","EoE","Resection"))
+  temp$tier4= temp$cell_types
+  print(ggplot(temp,aes(x=tier4,y=percent_of_sample,fill=study))  + geom_point(pch=21,position = position_dodge(0.75),size=3) +
+   # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3,position=position_dodge(0.8)) +
+    theme_classic() +
+    theme(text = element_text(size=20),axis.text.x = element_text(angle = 60, hjust = 1),  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.position="top",
+  # Remove panel background
+  panel.background = element_blank()) +
+    ggtitle("") + xlab("Cell type") + ylab("Percentage") +scale_fill_manual(values=use_colors)  + labs(fill=""))
+}
+
+plot_composition_no_labels = function(final_sig_cell_types,s_obj,use_colors){
+  s_obj$cell_types = s_obj$tier4
+  meta = combined_duo@meta.data %>% group_by(tier1,tier2,tier3,tier4)  %>% summarise(n())
+  all_counts = generate_all_counts(s_obj@meta.data)
+  temp = all_counts
+  less_types = as.character(final_sig_cell_types$cell_type)
+# 
+#   less_types =meta$tier4[meta$tier1==compartment][meta$tier4[meta$tier1==compartment] %in% less_types]
+
+  temp = temp[temp$cell_types %in% less_types,]
+temp$cell_types <- factor(temp$cell_types,
+    levels = less_types)
+  options(repr.plot.width = 10, repr.plot.height = 8)
+  
+  temp$study = factor(temp$study,levels=c("Durban","EE","EoE","Resection"))
+  temp$tier4= temp$cell_types
+  print(ggplot(temp,aes(x=tier4,y=percent_of_sample,fill=study))  + geom_point(pch=21,position = position_dodge(0.75),size=3) +
+   # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3,position=position_dodge(0.8)) +
+    theme_classic() +
+    theme(text = element_text(size=20),axis.text.x = element_blank(),  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.position="top",
+  # Remove panel background
+  panel.background = element_blank()) +
+    ggtitle("") + xlab("Cell type") + ylab("Percentage") +scale_fill_manual(values=use_colors)  + labs(fill=""))
+}
+
+```
+
+## Doing the plotting
+
+### Zambia vs both U.S. cohorts
+
+
+```{r}
+#Epi
+final_sig = readRDS("composition/ee_vs_us_epi.rds")
+pdf("~/zambia_eed_figures/zambia_vs_us/epi-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,epi_ee_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+pdf("~/zambia_eed_figures/zambia_vs_us/epi-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,epi_ee_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+
+# TNK
+final_sig = readRDS("composition/ee_vs_us_tnk.rds")
+pdf("~/zambia_eed_figures/zambia_vs_us/tnk-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,tnk_ee_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+pdf("~/zambia_eed_figures/zambia_vs_us/tnk-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,tnk_ee_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+
+# BMS
+final_sig = readRDS("composition/ee_vs_us_bms.rds")
+pdf("~/zambia_eed_figures/zambia_vs_us/bms-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,bms_ee_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+pdf("~/zambia_eed_figures/zambia_vs_us/bms-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,bms_ee_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+```
+
+
+### Durban vs both U.S. cohorts
+
+
+```{r}
+#Epi
+final_sig = readRDS("composition/durban_vs_us_epi.rds")
+pdf("~/zambia_eed_figures/sa_vs_us/epi-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,epi_durban_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+pdf("~/zambia_eed_figures/sa_vs_us/epi-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,epi_durban_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+
+# TNK
+final_sig = readRDS("composition/durban_vs_us_tnk.rds")
+pdf("~/zambia_eed_figures/sa_vs_us/tnk-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,tnk_durban_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+pdf("~/zambia_eed_figures/sa_vs_us/tnk-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,tnk_durban_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+
+# BMS
+final_sig = readRDS("composition/durban_vs_us_bms.rds")
+pdf("~/zambia_eed_figures/sa_vs_us/bms-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,bms_durban_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+pdf("~/zambia_eed_figures/sa_vs_us/bms-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,bms_durban_no_ee,disease_colors[c(5,3,4)])
+dev.off()
+```
+
+
+### Zambia vs Durban
+
+```{r}
+#Epi
+final_sig = readRDS("composition/ee_vs_zambia_epi.rds")
+pdf("~/zambia_eed_figures/zambia_vs_sa/epi-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,epi_ee_ee,disease_colors[c(1,5)])
+dev.off()
+pdf("~/zambia_eed_figures/zambia_vs_sa/epi-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,epi_ee_ee,disease_colors[c(1,5)])
+dev.off()
+
+# TNK
+final_sig = readRDS("composition/ee_vs_zambia_tnk.rds")
+pdf("~/zambia_eed_figures/zambia_vs_sa/tnk-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,tnk_ee_ee,disease_colors[c(1,5)])
+dev.off()
+pdf("~/zambia_eed_figures/zambia_vs_sa/tnk-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,tnk_ee_ee,disease_colors[c(1,5)])
+dev.off()
+
+# BMS
+final_sig = readRDS("composition/ee_vs_zambia_bms.rds")
+pdf("~/zambia_eed_figures/zambia_vs_sa/bms-figure/composition_labeled.pdf",useDingbats = F)
+plot_composition_with_labels(final_sig,bms_ee_ee,disease_colors[c(1,5)])
+dev.off()
+pdf("~/zambia_eed_figures/zambia_vs_sa/bms-figure/composition_no_label.pdf",useDingbats = F)
+plot_composition_no_labels(final_sig,bms_ee_ee,disease_colors[c(1,5)])
+dev.off()
+```
+

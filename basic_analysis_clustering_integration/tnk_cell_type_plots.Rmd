@@ -1,0 +1,164 @@
+---
+title: " Additional analysis on T & NK cells"
+output: html_notebook
+---
+
+# Loading libraries and data
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+set.seed(47)
+options(repr.plot.width = 8, repr.plot.height = 8)
+source("../../helper_scripts/plot_cluster_meta_percentage.R")
+```
+
+```{r}
+cell_type_colors = readRDS("cell_type_colors.rds")
+disease_colors = readRDS("disease_colors.rds")
+region_colors = readRDS("region_colors.rds")
+hiv_colors = readRDS("hiv_colors.rds")
+```
+
+```{r}
+tnk = readRDS("tnk_durban_eoe_resection_no_sa_HIV_aug18.rds")
+origs = names(table(tnk$orig.ident))
+tnk$orig.ident = factor(tnk$orig.ident,
+                             levels=origs[c(31:33,1:30)])
+nk = names(table(tnk$tier4))[c(2:4)]
+ilc = names(table(tnk$tier4))[1]
+cd4 = names(table(tnk$tier4))[c(5:6)]
+# cd4_cd8 = names(table(tnk$tier4))[c(6)]
+cd8 = names(table(tnk$tier4))[c(7:12)]
+cycling = names(table(tnk$tier4))[c(13)]
+gd = names(table(tnk$tier4))[c(14:15)]
+mt = names(table(tnk$tier4))[c(16)]
+reordered_cell_types = c(cd4,cd8,gd,nk,ilc,cycling,mt)
+tnk$tier4 = factor(tnk$tier4,levels=reordered_cell_types)
+```
+
+```{r}
+reordered_cell_types
+```
+
+# UMI and gene violins
+```{r}
+pdf("~/zambia_eed_figures/supp-1/tnk_umis.pdf",useDingbats = F)
+VlnPlot(tnk,"nCount_RNA",group.by="tier4",cols=cell_type_colors,pt.size=0.1)+ NoLegend() +
+    xlab("Cell subset") + ylab("Number of UMIs per cell") + ggtitle("")+theme(axis.text.x=element_text(angle=60,hjust=1))
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/tnk_genes.pdf",useDingbats = F)
+VlnPlot(tnk,"nFeature_RNA",group.by="tier4",cols=cell_type_colors,pt.size=0.1)+ NoLegend() +
+    xlab("Cell subset") + ylab("Number of unique genes per cell") + ggtitle("")+theme(axis.text.x=element_text(angle=60,hjust=1))
+dev.off()
+```
+
+
+# Study region and hiv umaps
+```{r}
+tnk$HIV.HTLV.[tnk$HIV.HTLV. =="Y"] = "Positive"
+tnk$HIV.HTLV.[tnk$HIV.HTLV. =="N"] = "Negative"
+
+
+
+pdf("~/zambia_eed_figures/supp-1/tnk_tier4.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_no_legend(tnk,group.by="tier4",cols =cell_type_colors)
+dev.off()
+
+pdf("~/zambia_eed_figures/supp-1/tnk_study.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_legend(tnk,group.by="study",cols = c(disease_colors[1],x,disease_colors[c(3,4)]))
+dev.off()
+
+pdf("~/zambia_eed_figures/supp-1/tnk_region.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_legend(tnk,group.by="region",cols = region_colors)
+dev.off()
+
+pdf("~/zambia_eed_figures/supp-1/tnk_hiv.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_legend(tnk,group.by="HIV.HTLV.",cols = hiv_colors)
+dev.off()
+```
+
+
+# Study, region, and HIV barplots
+```{r}
+
+
+
+pdf("~/zambia_eed_figures/supp-1/tnk_hiv_composition.pdf",useDingbats = F)
+
+plot_x_by_y_percentage_legend(tnk,x.group="tier4",y.group = "HIV.HTLV.",colors = hiv_colors,
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="HIV Status")
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/tnk_region_composition.pdf",useDingbats = F)
+
+plot_x_by_y_percentage_legend(tnk,x.group="tier4",y.group = "region",colors = region_colors,
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="Intestinal Region")
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/tnk_disease_composition.pdf",useDingbats = F)
+x= cell_type_colors[6]
+tnk$HIV.HTLV.[tnk$HIV.HTLV. =="Y"] = "Positive"
+tnk$HIV.HTLV.[tnk$HIV.HTLV. =="N"] = "Negative"
+tnk$study = as.character(tnk$study)
+tnk$study[tnk$study=="EE"&tnk$HIV.HTLV.=="Y"] = "EE HIV+"
+tnk$study = factor(tnk$study,levels=c("EE","EE HIV+","EoE","Resection"))
+plot_x_by_y_percentage_legend(tnk,x.group="tier4",y.group = "study",colors = c(disease_colors[1],x,disease_colors[c(3,4)]),
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="Patient Condition")
+dev.off()
+```
+
+```{r}
+table(tnk$HIV.HTLV.)
+```
+
+
+```{r}
+x= cell_type_colors[6]
+# tnk$HIV.HTLV.[tnk$HIV.HTLV. =="Y"] = "Positive"
+# tnk$HIV.HTLV.[tnk$HIV.HTLV. =="N"] = "Negative"
+tnk$study = as.character(tnk$study)
+tnk$study[tnk$study=="EE"&tnk$HIV.HTLV.=="Positive"] = "EE HIV+"
+tnk$study = factor(tnk$study,levels=c("EE","EE HIV+","EoE","Resection"))
+plot_x_by_y_percentage_legend(tnk,x.group="tier4",y.group = "study",colors = c(disease_colors[1],x,disease_colors[c(3,4)]),
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="Patient Condition")
+```
+
+
+```{r}
+reordered_cell_types
+```
+
+
+# Heatmap
+```{r}
+subset_markers = readRDS("../heatmap_markers/combined_heatmap_wilcox_markers_oct21.rds")
+subset_markers$cluster = as.character(subset_markers$cluster)
+subset_markers$cluster[subset_markers$cluster=="T HIV IFN"] = "T CD8 IFI44 IFIT1"
+subset_markers$cluster[subset_markers$cluster=="T CD4 CD69lo"] = "T CD4 CD69lo IL17A"
+subset_markers$cluster = as.factor(subset_markers$cluster)
+reordered_cell_types = c(cd4,cd8,gd,nk,ilc,cycling,mt)x
+top_genes <- c()
+for(cell_type in reordered_cell_types){
+    markers <- subset_markers[subset_markers$cluster==cell_type,]
+    top_genes <- c(top_genes,markers$gene[1:5])
+}
+# Randomly sampling 10 cells for each subtype
+n_per_celltype = 8
+downsampled_cells = c()
+for(cell_type in reordered_cell_types){
+    downsampled_cells <- c(downsampled_cells, sample(rownames(tnk@meta.data)[tnk$tier4==cell_type],8))
+}
+tnk$cell_types <- factor(tnk$tier4, levels = reordered_cell_types)
+temp = tnk
+temp = ScaleData(temp,features=rownames(temp))
+
+pdf("~/zambia_eed_figures/supp-1/tnk_heatmap.pdf",useDingbats = F,width=5,height=5)
+DoHeatmap(temp,cell=downsampled_cells,features=top_genes,group.by="cell_types",size=1.5,angle=60,
+    hjust=0.05,raster=FALSE,group.colors = cell_type_colors) + 
+    theme(axis.text.y = element_text(size = 3.5)) + ggtitle("")  + 
+    NoLegend() + 
+    scale_fill_gradientn(colors = colorRampPalette(c("blue", "white", "red"))(256))
+dev.off()
+```
+

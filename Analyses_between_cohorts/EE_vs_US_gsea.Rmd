@@ -1,0 +1,166 @@
+---
+title: "Running Hallmark msigdb  + reactome GSEA on the Zambia vs U.S. comparison"
+output: html_notebook
+---
+
+
+```{r}
+gsea_string = "..//old_iterative_clustering/gsea/c2.all.v7.1.symbols.gmt"
+gsc <- loadGSC(gsea_string, type="gmt") # Check that the filename matches the file that you downloaded
+gsc
+```
+
+```{r}
+get_median = function(pvals){
+    median= apply(pvals,1,median)
+    pvals = cbind(pvals, median)
+    pvals = data.frame(pvals)
+    return(pvals[complete.cases(pvals),])
+}
+
+get_intersection = function(eoe,wp, durban){
+    eoe_names = rownames(eoe[eoe$median < 0.5,])
+    wp_names = rownames(wp[wp$median < 0.5,])
+    return(eoe_names[eoe_names %in% wp_names & eoe_names])
+}
+
+get_final = function(pvals,both){
+    final = pvals[pvals$median < 0.05,]
+    final = final[rownames(final) %in% both,]
+    return(final)
+}
+```
+
+
+```{r}
+# Just using fgsea bc i don't think the squeeze to juice is worthwhile for using all of them
+get_significant_fgsea = function(path,gene_string,p_threshold){
+  gsc = loadGSC(gene_string, type="gmt") # Check that the filename matches the file that you downloaded
+  markers = read.csv(paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/both/",path,"both.csv"),row.names=1)
+  markers$cluster = "EED"
+  markers$gene = rownames(markers)
+  markers = markers %>% filter(p_val_adj < 0.05)
+  gl_eed = markers %>% filter(cluster=="EED")
+  geneLevelStats = gl_eed
+  padj <- geneLevelStats$p_val_adj
+  log2fc <- geneLevelStats$avg_logFC
+  names(padj) <- names(log2fc) <- geneLevelStats$gene
+  gsaRes_fgsea_all <- runGSA(log2fc, gsc=gsc, ncpus=4,gsSizeLim = c(10, 1000),geneSetStat = "fgsea",verbose=F)
+  summary_table = GSAsummaryTable(gsaRes_fgsea_all)
+  summary_table_up = summary_table[!is.na(summary_table$`p adj (dist.dir.up)`),] %>% filter(`p adj (dist.dir.up)` < p_threshold)
+  summary_table_down = summary_table[!is.na(summary_table$`p adj (dist.dir.dn)`),] %>% filter(`p adj (dist.dir.dn)` < p_threshold)
+  #markers = read.csv(paste0("../disease_de_eed_eoe_duo/",path,"EoE.csv"))
+  markers = read.csv(paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/eoe/",path,"EoE.csv"),row.names = 1)
+  markers$cluster = "EED"
+  markers$gene = rownames(markers)
+  markers = markers %>% filter(p_val_adj < 0.05)
+  gl_eed = markers %>% filter(cluster=="EED")
+  geneLevelStats = gl_eed
+  padj <- geneLevelStats$p_val_adj
+  log2fc <- geneLevelStats$avg_logFC
+  names(padj) <- names(log2fc) <- geneLevelStats$gene
+  gsaRes_fgsea_eoe <- runGSA(log2fc, gsc=gsc, ncpus=4,gsSizeLim = c(10, 1000),geneSetStat = "fgsea",verbose = F)
+  summary_table_eoe = GSAsummaryTable(gsaRes_fgsea_eoe)
+  summary_table_eoe_up = summary_table_eoe[!is.na(summary_table_eoe$`p adj (dist.dir.up)`),]
+  summary_table_eoe_down = summary_table_eoe[!is.na(summary_table_eoe$`p adj (dist.dir.dn)`),] 
+  
+  # DON"T DO ANY P VALUE THRSHOLDING HERE!!!!
+  
+  
+  #markers = read.csv(paste0("../disease_de_eed_wp_duo/",path,"Whipple.csv"))
+  markers = read.csv(paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/resection/",path,"Resection.csv"))
+  markers = markers %>% filter(p_val_adj < 0.05)
+  markers$cluster = "EED"
+  markers$gene = markers$X
+  gl_eed = markers %>% filter(cluster=="EED")
+  geneLevelStats = gl_eed
+  padj <- geneLevelStats$p_val_adj
+  log2fc <- geneLevelStats$avg_logFC
+  names(padj) <- names(log2fc) <- geneLevelStats$gene
+  gsaRes_fgsea_wp <- runGSA(log2fc, gsc=gsc, ncpus=4,gsSizeLim = c(10, 1000),geneSetStat = "fgsea",verbose = F)
+  summary_table_wp = GSAsummaryTable(gsaRes_fgsea_wp)
+  summary_table_wp_up = summary_table_wp[!is.na(summary_table_wp$`p adj (dist.dir.up)`),]
+  summary_table_wp_down = summary_table_wp[!is.na(summary_table_wp$`p adj (dist.dir.dn)`),]     
+  # DON"T DO ANY P VALUE THRSHOLDING HERE!!!!
+  
+  
+  
+  
+  final_up = summary_table_up %>% filter(Name %in% summary_table_eoe_up$Name) %>% filter(Name %in% summary_table_wp_up$Name)  
+  
+  final_down = summary_table_down %>% filter(Name %in% summary_table_eoe_down$Name) %>% filter(Name %in% summary_table_wp_down$Name) 
+
+     # DON"T DO ANY P VALUE THRSHOLDING HERE!!!!
+    
+    return(list(up=final_up,down=final_down))
+}
+```
+
+```{r}
+de_files = list.files("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/both/")
+for(i in 49:length(de_files)){
+  path = strsplit(de_files[i],"both.csv")[[1]]
+  print(i)
+  print(path)
+  eoe_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/eoe/",path,"EoE.csv")
+  wp_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/resection/",path,"Resection.csv")
+  if(file.exists(eoe_file)&file.exists(wp_file)){
+    eoe_table = read.csv(eoe_file,row.names=1)
+    wp_table = read.csv(wp_file,row.names=1)
+    if(nrow(eoe_table)>1&nrow(wp_table)>1){
+      msigdb = get_significant_fgsea(strsplit(path,"[.]")[[1]][1],gsea_string,0.05)
+      saveRDS(msigdb,paste0("piano_gsea/",strsplit(path,"[.]")[[1]][1],".rds"))
+    }
+  }
+}
+```
+
+Epi: up antigen processing IFN, down; mapk, oxidative phos ap1 tlr cascades tnf tgfb1 apoptosis
+Ent: up APC, SLC, IFN cytokin; down oxphos atp synthesis, tnf tlr response to aa deficiency
+Ent SI: up SLC; down osphos cell cyle aa metabolism
+Ent APOA ALPI: up APC IFN TNF; down oxphos
+Stem: oxphos down
+Secretory: up response to aa deficiency, translation; down oxphos etc
+
+TNK: 
+CD8 CD69: FOXP3 targets are down
+
+```{r}
+temp = readRDS("piano_gsea/tier1TNK_tier2T CD4.rds")
+temp
+```
+
+```{r}
+msigdb_string = "~/Downloads/h.all.v7.4.symbols.gmt"
+```
+
+```{r}
+de_files = list.files("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/both/")
+for(i in 49:length(de_files)){
+  path = strsplit(de_files[i],"both.csv")[[1]]
+  print(i)
+  print(path)
+  eoe_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/eoe/",path,"EoE.csv")
+  wp_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/resection/",path,"Resection.csv")
+  if(file.exists(eoe_file)&file.exists(wp_file)){
+    eoe_table = read.csv(eoe_file,row.names=1)
+    wp_table = read.csv(wp_file,row.names=1)
+    if(nrow(eoe_table)>1&nrow(wp_table)>1){
+      msigdb = get_significant_fgsea(strsplit(path,"[.]")[[1]][1],msigdb_string,0.05)
+      saveRDS(msigdb,paste0("piano_msigdb//",strsplit(path,"[.]")[[1]][1],".rds"))
+    }
+  }
+}
+```
+
+Epi: IFN oxphos up; TNF down
+
+TNK: up allograft rejection ;down TFNa p53
+CD8 CD69:  IFN complement up, hypoxia down
+
+```{r}
+temp = readRDS("piano_msigdb/tier1Epi_tier2Stem.rds")
+temp
+```
+
+

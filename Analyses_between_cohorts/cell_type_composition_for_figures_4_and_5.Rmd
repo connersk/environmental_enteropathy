@@ -1,0 +1,347 @@
+---
+title: "Cell type composition"
+output: html_notebook
+---
+
+# Loading in packages and Seurat object
+
+```{r}
+library(Seurat)
+library(tidyverse)
+disease_colors = readRDS("../../reseq_analysis/disease_colors.rds")
+source("EE_vs_all_control_cohorts_analysis_helper_functions.R")
+```
+
+```{r}
+# Loading in Seurat object and split into different cohort groups
+combined = readRDS("../../durban/durban_ee_eoe_resection_june152021.rds")
+combined_duo = subset(combined,region=="Duodenum") %>% subset(HIV.HTLV.=="N")
+combined_duo_ee_durban = subset(combined_duo,study!="Resection") %>% subset(study!='EoE')
+combined_duo_ee_eoe = subset(combined_duo,study!="Resection") %>% subset(study!='Durban')
+combined_duo_ee_resection = subset(combined_duo,study!="Durban") %>% subset(study!='EoE')
+```
+
+# Running composition analysis over all cell types
+
+```{r}
+# Finding the cell types with significant composition changes in the folowing comparisons
+    # EE vs. all three control cohorts
+    # EE vs. Durban cohort
+    # EE vs. EoE cohort
+    # EE. vs. Resection cohort
+composition_ee_vs_all = fisher_composition_test(combined_duo,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+composition_ee_vs_durban = fisher_composition_test(combined_duo_ee_durban,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+composition_ee_vs_eoe = fisher_composition_test(combined_duo_ee_eoe,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+composition_ee_vs_resection = fisher_composition_test(combined_duo_ee_resection,"tier4","study","EE",unique_types = unique(combined_duo$tier4))
+
+# Filtering results to identify cell types that are
+  # sig. in EE vs. all three
+  # same direction of change in EE vs each cohort individually
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  durban_sign = composition_ee_vs_durban$sign[composition_ee_vs_durban$cell_type==sig_vs_all$cell_type[i]]
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(durban_sign==eoe_sign & durban_sign==resection_sign & durban_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/all_compartments.rds")
+```
+
+```{r}
+final_sig = readRDS("../../durban/composition/all_compartments.rds")
+```
+
+```{r}
+final_sig
+```
+
+
+```{r}
+final_sig_cell_types = readRDS("composition/all_compartments.rds")
+s_obj = combined_duo
+s_obj$cell_types = s_obj$tier4
+meta = combined_duo@meta.data %>% group_by(tier1,tier2,tier3,tier4)  %>% summarise(n())
+all_counts = generate_all_counts(s_obj@meta.data)
+
+sample_all_counts = generate_counts_by_sample(all_counts)
+sample_meta = generate_sample_meta(s_obj@meta.data)
+sample_meta = sample_meta[order(sample_meta$orig.ident),]
+sample_all_counts = cbind(sample_all_counts, study=sample_meta$study)
+sample_all_counts = cbind(sample_all_counts, region=sample_meta$region)
+sample_all_counts = cbind(sample_all_counts, HIV.HTLV.=sample_meta$HIV.HTLV)
+
+all_counts$control = "EED"
+all_counts$control[all_counts$study=="Resection"] = "not EED"
+all_counts$control[all_counts$study=="EoE"] = "not EED"
+
+temp = all_counts
+less_types = as.character(final_sig_cell_types$cell_type)
+print(less_types)
+# less_types =meta$tier4[meta$tier1==compartment][meta$tier4[meta$tier1==compartment] %in% less_types]
+temp = temp[temp$cell_types %in% less_types,]
+temp$cell_types <- factor(temp$cell_types,
+    levels = less_types)
+library(wesanderson)
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+temp$study = factor(temp$study,levels=c("EE","EoE","Resection","Durban"))
+pdf("comparison_figures/composition_all.pdf",useDingbats = F)
+ggplot(temp,aes(x=cell_types,y=percent_of_sample,fill=study))  + geom_point(pch=21,position = position_dodge(0.75),size=3) +
+   # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3,position=position_dodge(0.8)) +
+    theme_classic() +
+    theme(text = element_text(size=20),axis.text.x = element_text(angle = 90, hjust = 1),  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.position="top",
+  # Remove panel background
+  panel.background = element_blank()) +
+    ggtitle("") + xlab("Cell type") + ylab("Percentage") +scale_fill_manual(values=disease_colors[c(1,3,4,5)])  + labs(fill="")
+dev.off()
+```
+
+# Running composition analysis over only T & NK cells
+
+```{r}
+# Plotting T & NK cells
+TNK = subset(combined_duo,tier1=="TNK")
+combined_duo_ee_durban = subset(TNK,study!="Resection") %>% subset(study!='EoE')
+combined_duo_ee_eoe = subset(TNK,study!="Resection") %>% subset(study!='Durban')
+combined_duo_ee_resection = subset(TNK,study!="Durban") %>% subset(study!='EoE')
+
+composition_ee_vs_all = fisher_composition_test(TNK,"tier4","study","EE",unique_types = unique(TNK$tier4))
+composition_ee_vs_durban = fisher_composition_test(combined_duo_ee_durban,"tier4","study","EE",unique_types = unique(TNK$tier4))
+composition_ee_vs_eoe = fisher_composition_test(combined_duo_ee_eoe,"tier4","study","EE",unique_types = unique(TNK$tier4))
+composition_ee_vs_resection = fisher_composition_test(combined_duo_ee_resection,"tier4","study","EE",unique_types = unique(TNK$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  durban_sign = composition_ee_vs_durban$sign[composition_ee_vs_durban$cell_type==sig_vs_all$cell_type[i]]
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(durban_sign==eoe_sign & durban_sign==resection_sign & durban_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/TNK.rds")
+```
+
+```{r}
+final_sig_cell_types = readRDS("composition/TNK.rds")
+s_obj= combined_duo
+s_obj$cell_types = s_obj$tier4
+meta = combined_duo@meta.data %>% group_by(tier1,tier2,tier3,tier4)  %>% summarise(n())
+all_counts = generate_all_counts(s_obj@meta.data)
+
+sample_all_counts = generate_counts_by_sample(all_counts)
+sample_meta = generate_sample_meta(s_obj@meta.data)
+sample_meta = sample_meta[order(sample_meta$orig.ident),]
+sample_all_counts = cbind(sample_all_counts, study=sample_meta$study)
+sample_all_counts = cbind(sample_all_counts, region=sample_meta$region)
+sample_all_counts = cbind(sample_all_counts, HIV.HTLV.=sample_meta$HIV.HTLV)
+
+all_counts$control = "EED"
+all_counts$control[all_counts$study=="Resection"] = "not EED"
+all_counts$control[all_counts$study=="EoE"] = "not EED"
+
+temp = all_counts
+less_types = as.character(final_sig_cell_types$cell_type)
+
+# less_types =meta$tier4[meta$tier1==compartment][meta$tier4[meta$tier1==compartment] %in% less_types]
+temp = temp[temp$cell_types %in% less_types,]
+temp$cell_types <- factor(temp$cell_types,
+    levels = less_types)
+library(wesanderson)
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+temp$study = factor(temp$study,levels=c("EE","EoE","Resection","Durban"))
+pdf("comparison_figures/composition_all.pdf",useDingbats = F)
+ggplot(temp,aes(x=cell_types,y=percent_of_sample,fill=study))  + geom_point(pch=21,position = position_dodge(0.75),size=3) +
+   # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3,position=position_dodge(0.8)) +
+    theme_classic() +
+    theme(text = element_text(size=20),axis.text.x = element_text(angle = 45, hjust = 1),  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.position="top",
+  # Remove panel background
+  panel.background = element_blank()) +
+    ggtitle("") + xlab("Cell type") + ylab("Percentage") +scale_fill_manual(values=disease_colors[c(1,3,4,5)])  + labs(fill="")
+dev.off()
+```
+
+# Running composition analysis over only epithelial cells
+
+```{r}
+# Only over Epi
+epi = subset(combined_duo,tier1=="Epi")
+combined_duo_ee_durban = subset(epi,study!="Resection") %>% subset(study!='EoE')
+combined_duo_ee_eoe = subset(epi,study!="Resection") %>% subset(study!='Durban')
+combined_duo_ee_resection = subset(epi,study!="Durban") %>% subset(study!='EoE')
+
+composition_ee_vs_all = fisher_composition_test(epi,"tier4","study","EE",unique_types = unique(epi$tier4))
+composition_ee_vs_durban = fisher_composition_test(combined_duo_ee_durban,"tier4","study","EE",unique_types = unique(epi$tier4))
+composition_ee_vs_eoe = fisher_composition_test(combined_duo_ee_eoe,"tier4","study","EE",unique_types = unique(epi$tier4))
+composition_ee_vs_resection = fisher_composition_test(combined_duo_ee_resection,"tier4","study","EE",unique_types = unique(epi$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  durban_sign = composition_ee_vs_durban$sign[composition_ee_vs_durban$cell_type==sig_vs_all$cell_type[i]]
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(durban_sign==eoe_sign & durban_sign==resection_sign & durban_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/epi.rds")
+
+```
+
+```{r}
+final_sig = readRDS("../../durban/composition/TNK.rds")
+final_sig
+```
+
+
+```{r}
+final_sig_cell_types
+```
+
+
+
+```{r}
+final_sig_cell_types = readRDS("composition/epi.rds")
+epi = subset(combined_duo,tier1=="Epi")
+s_obj = epi
+s_obj$cell_types = s_obj$tier4
+meta = combined_duo@meta.data %>% group_by(tier1,tier2,tier3,tier4)  %>% summarise(n())
+all_counts = generate_all_counts(s_obj@meta.data)
+
+sample_all_counts = generate_counts_by_sample(all_counts)
+sample_meta = generate_sample_meta(s_obj@meta.data)
+sample_meta = sample_meta[order(sample_meta$orig.ident),]
+sample_all_counts = cbind(sample_all_counts, study=sample_meta$study)
+sample_all_counts = cbind(sample_all_counts, region=sample_meta$region)
+sample_all_counts = cbind(sample_all_counts, HIV.HTLV.=sample_meta$HIV.HTLV)
+
+all_counts$control = "EED"
+all_counts$control[all_counts$study=="Resection"] = "not EED"
+all_counts$control[all_counts$study=="EoE"] = "not EED"
+
+temp = all_counts
+less_types = as.character(final_sig_cell_types$cell_type)
+compartment = "Epi"
+less_types =meta$tier4[meta$tier1==compartment][meta$tier4[meta$tier1==compartment] %in% less_types]
+temp = temp[temp$cell_types %in% less_types,]
+temp$cell_types <- factor(temp$cell_types,
+    levels = less_types)
+library(wesanderson)
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+temp$study = factor(temp$study,levels=c("EE","EoE","Resection","Durban"))
+pdf("comparison_figures/composition_epi.pdf",useDingbats = F)
+ggplot(temp,aes(x=cell_types,y=percent_of_sample,fill=study))  + geom_point(pch=21,position = position_dodge(0.75),size=3) +
+   # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3,position=position_dodge(0.8)) +
+    theme_classic() +
+    theme(text = element_text(size=20),axis.text.x = element_text(angle = 45, hjust = 1),  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.position="top",
+  # Remove panel background
+  panel.background = element_blank()) +
+    ggtitle("") + xlab("Cell type") + ylab("Percentage") +scale_fill_manual(values=disease_colors[c(1,3,4,5)])  + labs(fill="")
+dev.off()
+```
+
+# Running composition analysis over only B cells, myeloid cells, and stromal cells
+
+```{r}
+# Only over BMS
+BMS = subset(combined_duo,tier1!="Epi") %>% subset(tier1!='TNK')
+combined_duo_ee_durban = subset(BMS,study!="Resection") %>% subset(study!='EoE')
+combined_duo_ee_eoe = subset(BMS,study!="Resection") %>% subset(study!='Durban')
+combined_duo_ee_resection = subset(BMS,study!="Durban") %>% subset(study!='EoE')
+
+composition_ee_vs_all = fisher_composition_test(BMS,"tier4","study","EE",unique_types = unique(BMS$tier4))
+composition_ee_vs_durban = fisher_composition_test(combined_duo_ee_durban,"tier4","study","EE",unique_types = unique(BMS$tier4))
+composition_ee_vs_eoe = fisher_composition_test(combined_duo_ee_eoe,"tier4","study","EE",unique_types = unique(BMS$tier4))
+composition_ee_vs_resection = fisher_composition_test(combined_duo_ee_resection,"tier4","study","EE",unique_types = unique(BMS$tier4))
+
+# combining these composition results
+sig_vs_all = composition_ee_vs_all %>% filter(max_adj_pvals < 0.05)
+sig_vs_all$same_sign = 0
+for(i in 1:nrow(sig_vs_all)){
+  durban_sign = composition_ee_vs_durban$sign[composition_ee_vs_durban$cell_type==sig_vs_all$cell_type[i]]
+  eoe_sign = composition_ee_vs_eoe$sign[composition_ee_vs_eoe$cell_type==sig_vs_all$cell_type[i]]
+  resection_sign = composition_ee_vs_resection$sign[composition_ee_vs_resection$cell_type==sig_vs_all$cell_type[i]]
+  if(durban_sign==eoe_sign & durban_sign==resection_sign & durban_sign==sig_vs_all$sign[i]){
+    sig_vs_all$same_sign[i] = 1
+  }
+}
+
+final_sig = sig_vs_all %>% filter(same_sign==1)
+saveRDS(final_sig,"composition/BMS.rds")
+```
+
+```{r}
+final_sig_cell_types = readRDS("composition/BMS.rds")
+compartments = c("B cells","Myeloid","Stromal")
+s_obj= subset(combined_duo,tier1!="TNK") %>% subset(tier1!="Epi") 
+s_obj$cell_types = s_obj$tier4
+meta = combined_duo@meta.data %>% group_by(tier1,tier2,tier3,tier4)  %>% summarise(n())
+all_counts = generate_all_counts(s_obj@meta.data)
+
+sample_all_counts = generate_counts_by_sample(all_counts)
+sample_meta = generate_sample_meta(s_obj@meta.data)
+sample_meta = sample_meta[order(sample_meta$orig.ident),]
+sample_all_counts = cbind(sample_all_counts, study=sample_meta$study)
+sample_all_counts = cbind(sample_all_counts, region=sample_meta$region)
+sample_all_counts = cbind(sample_all_counts, HIV.HTLV.=sample_meta$HIV.HTLV)
+
+all_counts$control = "EED"
+all_counts$control[all_counts$study=="Resection"] = "not EED"
+all_counts$control[all_counts$study=="EoE"] = "not EED"
+
+temp = all_counts
+less_types = as.character(final_sig_cell_types$cell_type)
+
+less_types =meta$tier4[meta$tier1%in%compartments][meta$tier4[meta$tier1%in%compartments] %in% less_types]
+temp = temp[temp$cell_types %in% less_types,]
+temp$cell_types <- factor(temp$cell_types,
+    levels = less_types)
+library(wesanderson)
+options(repr.plot.width = 10, repr.plot.height = 8)
+
+temp$study = factor(temp$study,levels=c("EE","EoE","Resection","Durban"))
+pdf("comparison_figures/composition_bms.pdf",useDingbats = F)
+ggplot(temp,aes(x=cell_types,y=percent_of_sample,fill=study))  + geom_point(pch=21,position = position_dodge(0.75),size=3) +
+   # geom_dotplot(binaxis='y', stackdir='center', dotsize=0.3,position=position_dodge(0.8)) +
+    theme_classic() +
+    theme(text = element_text(size=20),axis.text.x = element_text(angle = 45, hjust = 1),  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  legend.position="top",
+  # Remove panel background
+  panel.background = element_blank()) +
+    ggtitle("") + xlab("Cell type") + ylab("Percentage") +scale_fill_manual(values=disease_colors[c(1,3,4,5)])  + labs(fill="")
+dev.off()
+```
+
+
+
+

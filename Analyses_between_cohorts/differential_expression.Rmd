@@ -1,0 +1,112 @@
+---
+title: "Differential expression analysis"
+output: html_notebook
+---
+
+# Loading in libraries, helper fuctions, and Seurat objects
+
+```{r}
+library(Seurat)
+library(tidyverse)
+
+source("cross_three_cohorts_analysis_helpers.R")
+source("differential_expression_helper_functions.R")
+```
+
+```{r}
+# Loading in combined data from all cohorts
+combined = readRDS("durban_ee_eoe_resection_june152021.rds")
+
+# Subseting down to only HIV- Duodenal samples
+combined_duo = subset(combined, HIV.HTLV.=="N") %>% subset(region=="Duodenum") %>% subset(tier1!="Stromal")
+```
+
+# Running differential expression
+
+## EE vs. all three control cohorts
+
+```{r}
+setwd("~/Dropbox (MIT)/Zambia/durban/DE//all_three")
+find_markers_three(combined_duo %>% subset(tier1=="Epi"))
+```
+
+## EE vs. both U.S. control cohorts
+
+```{r}
+setwd("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/both")
+combined_both = combined_duo %>% subset(study!="Durban")
+find_markers_two(combined_both)
+```
+
+## EE vs. each cohort individually
+
+```{r}
+setwd("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/eoe")
+combined_eoe = subset(combined_duo,study!="Durban") %>% subset(study!="Resection")
+print(table(combined_eoe$study))
+find_markers_EoE(combined_eoe)
+
+setwd("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/resection")
+combined_resection = subset(combined_duo,study!="Durban") %>% subset(study!="EoE")
+print(table(combined_resection$study))
+find_markers_Resection(combined_resection)
+
+setwd("~/Dropbox (MIT)/Zambia/durban/DE/durban/")
+combined_durban = subset(combined_duo,study!="EoE") %>% subset(study!="Resection")
+print(table(combined_durban$study))
+find_markers_Durban(combined_durban)
+
+```
+
+# Combining the DE results
+
+## For the EE vs. all three cohort analysis
+
+```{r}
+source("cross_three_cohorts_analysis_helpers.R")
+setwd("~/Dropbox (MIT)/Zambia/durban/")
+de_files = list.files("~/Dropbox (MIT)/Zambia/durban/DE/all_three/")
+for(i in 1:length(de_files)){
+  path = strsplit(de_files[i],"all.csv")[[1]]
+  print(i)
+  eoe_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/eoe/",path,"EoE.csv")
+  resection_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/resection/",path,"Resection.csv")
+  sa_file = paste0("~/Dropbox (MIT)/Zambia/durban/DE/durban/",path,"Durban.csv")
+  if(file.exists(eoe_file)&file.exists(resection_file)&file.exists(sa_file)){
+    eoe_table = read.csv(eoe_file,row.names=1)
+    resection_table = read.csv(resection_file,row.names=1)
+    sa_table = read.csv(sa_file,row.names=1)
+    if(nrow(eoe_table)>1&nrow(resection_table)>1&nrow(sa_table)>1){
+          temp = read_markers(path)
+          write.csv(temp,paste0("~/Dropbox (MIT)/Zambia/durban/DE/combined_DE_passed_filter/",path,"combined.csv"))
+    }
+  }
+}
+
+```
+
+## For the EE vs. U.S. cohorts analysis
+
+```{r}
+source("~/Dropbox (MIT)/Zambia/reseq_analysis/figures/cross_cohort_helper_scripts.R")
+setwd("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/")
+de_files = list.files("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/both/")
+for(i in 1:length(de_files)){
+  path = strsplit(de_files[i],"both.csv")[[1]]
+  print(i)
+  eoe_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/eoe/",path,"EoE.csv")
+  resection_file = paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/resection/",path,"Resection.csv")
+  if(file.exists(eoe_file)&file.exists(resection_file)){
+    eoe_table = read.csv(eoe_file,row.names=1)
+    resection_table = read.csv(resection_file,row.names=1)
+    if(nrow(eoe_table)>1&nrow(resection_table)>1){
+          temp = read_markers(path)
+          write.csv(temp,paste0("~/Dropbox (MIT)/Zambia/reseq_analysis/fixed_de/passed_filter/",path,"both_passed_filter.csv"))
+    }
+  }
+}
+```
+
+
+
+

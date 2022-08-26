@@ -1,0 +1,78 @@
+---
+title: "Run label transfer integration on the Durban data"
+output: html_notebook
+---
+
+What does this notebook do? Using the cell type labels in my EE+EoE+Resection data to label the durban data with Seurat integration
+
+```{r}
+library(Seurat)
+library(tidyverse)
+```
+
+# Loading in the data
+
+```{r}
+bms = readRDS("compartments/bms_durban_june7_no_doublet.rds")
+tnk = readRDS("compartments/tnk_durban_june7_no_doublet.rds")
+epi = readRDS("compartments/epi_durban_june7_no_doublet.rds")
+```
+
+```{r}
+durban = merge(bms,tnk)
+durban = merge(durban,epi)
+```
+
+```{r}
+rm(bms)
+rm(tnk)
+rm(epi)
+saveRDS(durban,"durban_filtered_no_scrublet_june3_basic_annotations.rds")
+```
+
+```{r}
+combined = readRDS("../reseq_analysis/combined_iterate_jan13.rds")
+```
+
+# Performing the integration
+
+
+```{r}
+run_seurat_mt = function(s_obj,pcs=50){
+    s_obj <- PercentageFeatureSet(s_obj, pattern = "^MT-", col.name = "percent.mt")
+    s_obj <- SCTransform(s_obj, verbose = FALSE,vars.to.regress = "percent.mt")
+    num_pcs <- min(pcs,length(colnames(s_obj))-1)
+    s_obj <- RunPCA(s_obj, verbose = FALSE,npcs=num_pcs)
+    s_obj <- RunUMAP(s_obj, dims = 1:num_pcs, verbose = FALSE)
+    s_obj <- FindNeighbors(s_obj, dims = 1:num_pcs, verbose = FALSE,k.param=floor(0.5*(nrow(s_obj@meta.data))^0.5),force.recalc=T)
+    s_obj <- FindClusters(s_obj, verbose = FALSE,resolution=0.8)
+    s_obj <- FindClusters(s_obj, verbose = FALSE,resolution=0.4)
+    s_obj <- FindClusters(s_obj, verbose = FALSE,resolution=0.2)
+    return(s_obj)
+}
+```
+
+
+```{r}
+durban = run_seurat_mt(durban)
+combined = run_seurat_mt(combined)
+```
+
+
+```{r}
+integration.anchors = FindTransferAnchors(reference=combined,query=durban,npcs=50)
+```
+
+```{r}
+predictions <- TransferData(anchorset = integration.anchors, refdata = combined$tier4 )
+```
+
+```{r}
+durban <- AddMetaData(durban, metadata = predictions)
+```
+
+
+```{r}
+saveRDS(durban,"durban_filtered_no_scrublet_june3_basic_annotations_and_integrated_annotations.rds")
+```
+

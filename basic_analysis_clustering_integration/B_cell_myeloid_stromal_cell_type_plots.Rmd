@@ -1,0 +1,117 @@
+---
+title: "Extended data figure: Additional analysis on B cells, myeloid, and stromal"
+output: html_notebook
+---
+
+# Loading libraries and data
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(RColorBrewer)
+library(pheatmap)
+set.seed(47)
+options(repr.plot.width = 8, repr.plot.height = 8)
+source("../../helper_scripts/plot_cluster_meta_percentage.R")
+```
+
+```{r}
+cell_type_colors = readRDS("cell_type_colors.rds")
+disease_colors = readRDS("disease_colors.rds")
+region_colors = readRDS("region_colors.rds")
+hiv_colors = readRDS("hiv_colors.rds")
+```
+
+```{r}
+bms = readRDS("bms_durban_eoe_resection_no_sa_HIV_aug18.rds")
+origs = names(table(bms$orig.ident))
+bms$orig.ident = factor(bms$orig.ident,
+                             levels=origs[c(31:33,1:30)])
+b_cells = names(table(bms$tier4))[c(1,9)]
+myeloid = names(table(bms$tier4))[c(2,4:8)]
+stromal = names(table(bms$tier4))[c(3)]
+reordered_cell_types <- c(b_cells,myeloid,stromal)
+```
+
+```{r}
+reordered_cell_types
+```
+
+# UMAP for these three
+```{r}
+pdf("~/zambia_eed_figures/supp-1/bms_tier4.pdf",useDingbats = FALSE,width = 8,height=8)
+umap_no_legend(bms,group.by="tier4",cols = cell_type_colors)
+dev.off()
+
+
+```
+
+# UMI and gene plots
+```{r}
+pdf("~/zambia_eed_figures/supp-1/bms_umis.pdf",useDingbats = F)
+VlnPlot(bms,"nCount_RNA",group.by="tier4",cols=cell_type_colors,pt.size=0.1)+ NoLegend() +
+    xlab("Cell subset") + ylab("Number of UMIs per cell") + ggtitle("")+theme(axis.text.x=element_text(angle=60,hjust=1))
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/bms_genes.pdf",useDingbats = F)
+VlnPlot(bms,"nFeature_RNA",group.by="tier4",cols=cell_type_colors,pt.size=0.1)+ NoLegend() +
+    xlab("Cell subset") + ylab("Number of unique genes per cell") + ggtitle("")+theme(axis.text.x=element_text(angle=60,hjust=1))
+dev.off()
+```
+# Study, region, and HIV barplots
+```{r}
+bms$HIV.HTLV.[bms$HIV.HTLV. =="Y"] = "Positive"
+bms$HIV.HTLV.[bms$HIV.HTLV. =="N"] = "Negative"
+
+pdf("~/zambia_eed_figures/supp-1/bms_hiv_composition.pdf",useDingbats = F)
+
+plot_x_by_y_percentage_legend(bms,x.group="tier4",y.group = "HIV.HTLV.",colors = hiv_colors,
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="HIV Status")
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/bms_region_composition.pdf",useDingbats = F)
+
+plot_x_by_y_percentage_legend(bms,x.group="tier4",y.group = "region",colors = region_colors,
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="Intestinal Region")
+dev.off()
+pdf("~/zambia_eed_figures/supp-1/bms_disease_composition.pdf",useDingbats = F)
+x= cell_type_colors[6]
+bms$HIV.HTLV.[bms$HIV.HTLV. =="Y"] = "Positive"
+bms$HIV.HTLV.[bms$HIV.HTLV. =="N"] = "Negative"
+bms$study = as.character(bms$study)
+bms$study[bms$study=="EE"&bms$HIV.HTLV.=="Y"] = "EE HIV+"
+bms$study = factor(bms$study,levels=c("EE","EE HIV+","EoE","Resection"))
+plot_x_by_y_percentage_legend(bms,x.group="tier4",y.group = "study",colors = c(disease_colors[1],x,disease_colors[c(3,4)]),
+                      x_lab="Cell subsets",y_lab="Fraction of cells in subset",legend_label="Patient Condition")
+dev.off()
+```
+
+
+
+
+# Heatmap
+```{r}
+subset_markers = readRDS("../heatmap_markers/combined_heatmap_wilcox_markers_oct21.rds")
+
+reordered_cell_types <- c(b_cells,myeloid,stromal)
+top_genes <- c()
+for(cell_type in reordered_cell_types){
+    markers <- subset_markers[subset_markers$cluster==cell_type,]
+    top_genes <- c(top_genes,markers$gene[1:5])
+}
+# Randomly sampling 10 cells for each subtype
+n_per_celltype = 10
+downsampled_cells = c()
+for(cell_type in reordered_cell_types){
+    downsampled_cells <- c(downsampled_cells, sample(rownames(bms@meta.data)[bms$tier4==cell_type],10))
+}
+bms$cell_types <- factor(bms$tier4, levels = reordered_cell_types)
+temp = bms
+temp = ScaleData(temp,features=rownames(temp))
+pdf("~/zambia_eed_figures/supp-1/bms_heatmap.pdf",useDingbats = F,width=5,height=5)
+DoHeatmap(temp,cell=downsampled_cells,features=top_genes,group.by="cell_types",size=1.5,angle=60,
+    hjust=0.05,raster=FALSE,group.colors = cell_type_colors) + 
+    theme(axis.text.y = element_text(size = 3.5)) + ggtitle("")  + 
+    NoLegend() + 
+    scale_fill_gradientn(colors = colorRampPalette(c("blue", "white", "red"))(256))
+dev.off()
+```
+

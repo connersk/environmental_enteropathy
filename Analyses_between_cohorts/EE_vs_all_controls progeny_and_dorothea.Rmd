@@ -1,0 +1,301 @@
+---
+title: "PROGENY and DoRothEA comparisons between EE and Durban/EoE/Resection"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(Seurat)
+library(progeny)
+library(dorothea)
+library(reshape2)
+library(effsize)
+library(viridis)
+
+source("EE_vs_all_control_cohorts_analysis_helper_functions.R")
+```
+
+```{r}
+combined = readRDS("durban_ee_eoe_resection_june152021.rds")
+```
+
+# Doing the calculations
+
+```{r}
+# combined <- progeny(combined, scale=FALSE, organism="Human", top=500, perm=1, 
+#     return_assay = TRUE)
+# combined<- Seurat::ScaleData(combined, assay = "progeny") 
+
+dorothea_regulon_human <- get(data("dorothea_hs", package = "dorothea"))
+## We obtain the regulons based on interactions with confidence level A, B and C
+regulon <- dorothea_regulon_human %>%
+    dplyr::filter(confidence %in% c("A","B","C"))
+# We compute Viper Scores
+combined <- run_viper(combined, regulon,
+                  options = list(method = "scale", minsize = 4,
+                                 eset.filter = FALSE, cores = 1,
+                                 verbose = FALSE))
+DefaultAssay(object = combined) <- "dorothea"
+combined <- ScaleData(combined)
+saveRDS(combined, "durban_ee_eoe_resection_june152021.rds")
+```
+
+
+
+# Plotting 
+
+```{r}
+combined_duo = subset(combined,region=='Duodenum') %>% subset(HIV.HTLV.=="N")
+```
+
+Looking at the epithelial results
+```{r}
+cell_types = c("Stem OLFM4 LGR5","Stem OLFM4","Stem cycling",
+    "Ent SI","Ent APOA ALPI","BEST4",
+               "Secretory precursor","Goblet","EEC","Paneth","Tuft")
+subset_tiers = c(3,3,3,
+          3,4,3,3,3,3,3,3)
+i=1
+type = cell_types[i]
+# Prepping Seurat Object
+if(subset_tiers[i]==4){
+    sobj = subset(combined_duo,tier4==type)
+}else{
+    sobj = subset(combined_duo,tier3==type)
+}
+DefaultAssay(sobj) <- "progeny"
+Idents(sobj)<-"study"
+sobj_eoe = subset(sobj,study!="Resection") %>% subset(study!="Durban")
+sobj_wp = subset(sobj,study!="EoE") %>% subset(study!="Durban")
+sobj_sa = subset(sobj,study!="EoE") %>% subset(study!="Resection")
+
+sobj$study[sobj$study=="EoE"]="not EE"
+sobj$study[sobj$study=="Resection"]="not EE"
+sobj$study[sobj$study=="Durban"]="not EE"
+
+# Getting delta between EED & not EED scores over pathways
+prog_scores = get_progeny_for_cell_type(sobj)
+prog_scores$pvalue = 1
+prog_scores = prog_scores %>% add_column(cell_type =rep(type,nrow(prog_scores)),.before=T)
+
+# Calculating significant pathways
+markers.vs.all = get_sobj_progeny_two_way(sobj,"study")
+markers.vs.eoe = get_sobj_progeny_two_way(sobj_eoe,"study")
+markers.vs.wp = get_sobj_progeny_two_way(sobj_wp,"study")
+markers.vs.sa = get_sobj_progeny_two_way(sobj_sa,"study")
+
+# need to run combine markers progeny
+combined_markers = combine_markers_progeny(markers.vs.all,markers.vs.eoe,markers.vs.wp,markers.vs.sa)
+
+for(i in 1:nrow(combined_markers)){
+    prog_scores$pvalue[prog_scores$Pathway == rownames(combined_markers)[i]] = combined_markers$p_val_adj[i]
+}
+final_prog = prog_scores
+
+for(i in 2:length(cell_types)){
+    type = cell_types[i]
+    # Prepping Seurat Object
+    if(subset_tiers[i]==4){
+        sobj = subset(combined_duo,tier4==type)
+    }else{
+        sobj = subset(combined_duo,tier3==type)
+    }
+    DefaultAssay(sobj) <- "progeny"
+    Idents(sobj)<-"study"
+    sobj_eoe = subset(sobj,study!="Resection") %>% subset(study!="Durban")
+    sobj_wp = subset(sobj,study!="EoE") %>% subset(study!="Durban")
+    sobj_sa = subset(sobj,study!="EoE") %>% subset(study!="Resection")
+    
+    sobj$study[sobj$study=="EoE"]="not EE"
+    sobj$study[sobj$study=="Resection"]="not EE"
+    sobj$study[sobj$study=="Durban"]="not EE"
+    
+    # Getting delta between EED & not EED scores over pathways
+    prog_scores = get_progeny_for_cell_type(sobj)
+    prog_scores$pvalue = 1
+    prog_scores = prog_scores %>% add_column(cell_type =rep(type,nrow(prog_scores)),.before=T)
+    
+    # Calculating significant pathways
+    markers.vs.all = get_sobj_progeny_two_way(sobj,"study")
+    markers.vs.eoe = get_sobj_progeny_two_way(sobj_eoe,"study")
+    markers.vs.wp = get_sobj_progeny_two_way(sobj_wp,"study")
+    markers.vs.sa = get_sobj_progeny_two_way(sobj_sa,"study")
+    
+    # need to run combine markers progeny
+    combined_markers = combine_markers_progeny(markers.vs.all,markers.vs.eoe,markers.vs.wp,markers.vs.sa)
+    
+    for(i in 1:nrow(combined_markers)){
+        prog_scores$pvalue[prog_scores$Pathway == rownames(combined_markers)[i]] = combined_markers$p_val_adj[i]
+    }
+    
+    final_prog = rbind(final_prog,prog_scores)
+}
+saveRDS(final_prog,"progeny_dorothea/progeny_epi.rds")
+```
+
+# ok so I am worried that there is a bug somewhere because these results should be strictly a subset of what I saw before. Unlessss things are significnat now vs the whole group weren't before, so nevermind that would make sense
+
+```{r}
+final_prog = readRDS("progeny_dorothea/progeny_epi.rds")
+cell_types = c("Stem OLFM4 LGR5","Stem OLFM4","Stem cycling",
+    "Ent SI","Ent APOA ALPI","BEST4",
+               "Secretory precursor","Goblet","EEC","Paneth","Tuft")
+final_prog_sig = final_prog %>% filter(pvalue<0.05)
+final_prog_sig$minus_log_pvalue = -1*log10(final_prog_sig$pvalue)
+final_prog_sig$cell_type <- factor(final_prog_sig$cell_type,levels = cell_types)
+
+cohen_matrix = acast(final_prog, cell_type~Pathway, value.var = "cohensD")
+Pathway_order = hclust(dist(t(cohen_matrix),method="euclidean"),method="ward.D")$order
+final_prog$Pathway = factor(final_prog$Pathway,levels=colnames(cohen_matrix)[Pathway_order])
+final_prog_sig = final_prog %>% filter(pvalue<0.05)
+final_prog_sig$minus_log_pvalue = -1*log10(final_prog_sig$pvalue)
+final_prog_sig$cell_type <- factor(final_prog_sig$cell_type,levels = cell_types)
+pdf("~/zambia_eed_figures/three_cohorts/epithelium_figure/progeny_dotplot2.pdf",width=5,height=4.5,useDingbats = F)
+ggplot(data=final_prog_sig,aes(x=cell_type,y=Pathway,color=cohensD,size=minus_log_pvalue)) +
+    geom_point() + 
+    scale_color_viridis(option="magma") +
+    xlab("Cell Type") + theme_light() +
+    theme(axis.text.x = element_text(angle = 45,hjust=1)) +
+    labs(size="-log10(adj. pvalue)", colour="Cohen's D effect size \n between  EE &  not EE \n pathway scores") +
+    ggtitle("")
+```
+
+# Looking at dorothea results
+
+Basically just want to look at the highlighed DoRothEA predictions and see what those are looking like
+
+
+## Running dorothea
+
+```{r}
+cell_types = c("Stem OLFM4 LGR5","Stem OLFM4","Stem cycling",
+    "Ent SI","Ent APOA ALPI","BEST4",
+               "Secretory precursor","Goblet","EEC","Paneth","Tuft")
+subset_tiers = c(3,3,3,
+          3,4,3,3,3,3,3,3)  
+
+i=1
+type = cell_types[1]
+# Prepping Seurat Object
+if(subset_tiers[i]==4){
+    sobj = subset(combined_duo,tier4==type)
+}else{
+    sobj = subset(combined_duo,tier3==type)
+}
+DefaultAssay(sobj) <- "dorothea"
+Idents(sobj)<-"study"
+sobj <- ScaleData(sobj,verbose=F)
+sobj_eoe = subset(sobj,study!="Resection") %>% subset(study!='Durban')
+sobj_wp = subset(sobj,study!="EoE")%>% subset(study!='Durban')
+sobj_sa = subset(sobj,study!="EoE") %>% subset(study!="Resection")
+
+sobj$study[sobj$study=="EoE"]="not EE"
+sobj$study[sobj$study=="Resection"]="not EE"
+sobj$study[sobj$study=="Durban"]="not EE"
+
+# Getting delta between EE & not EE scores over tfs
+doro_scores = get_dorothea_for_cell_type(sobj)
+doro_scores$pvalue = 1
+doro_scores = doro_scores %>% add_column(cell_type =rep(type,nrow(doro_scores)),.before=T)
+
+# Calculating significant tfs
+markers.vs.all = get_sobj_dorothea_two_way(sobj,"study")
+markers.vs.eoe = get_sobj_dorothea_two_way(sobj_eoe,"study")
+markers.vs.wp = get_sobj_dorothea_two_way(sobj_wp,"study")
+markers.vs.sa = get_sobj_dorothea_two_way(sobj_sa,"study")
+combined_markers = combine_markers_dorothea(markers.vs.all,markers.vs.eoe,markers.vs.wp,markers.vs.sa)
+
+for(i in 1:nrow(combined_markers)){
+    doro_scores$pvalue[doro_scores$TF == rownames(combined_markers)[i]] = combined_markers$p_val_adj[i]
+}
+final_doro = doro_scores
+
+for(i in 2:length(cell_types)){
+    type = cell_types[i]
+    print(type)
+    # Prepping Seurat Object
+    if(subset_tiers[i]==4){
+        sobj = subset(combined_duo,tier4==type)
+    }else{
+        sobj = subset(combined_duo,tier3==type)
+    }
+    DefaultAssay(sobj) <- "dorothea"
+    Idents(sobj)<-"study"
+    sobj <- ScaleData(sobj,verbose=F)
+    sobj_eoe = subset(sobj,study!="Resection") %>% subset(study!="Durban")
+    sobj_wp = subset(sobj,study!="EoE") %>% subset(study!="Durban")
+    sobj_sa = subset(sobj,study!="EoE") %>% subset(study!="Resection")
+    
+    sobj$study[sobj$study=="EoE"]="not EE"
+    sobj$study[sobj$study=="Resection"]="not EE"
+    sobj$study[sobj$study=="Durban"]="not EE"
+
+    # Getting delta between EE & not EE scores over tfs
+    doro_scores = get_dorothea_for_cell_type(sobj)
+    doro_scores$pvalue = 1
+    doro_scores = doro_scores %>% add_column(cell_type =rep(type,nrow(doro_scores)),.before=T)
+
+    # Calculating significant tfs
+    markers.vs.all = get_sobj_dorothea_two_way(sobj,"study")
+    markers.vs.eoe = get_sobj_dorothea_two_way(sobj_eoe,"study")
+    markers.vs.wp = get_sobj_dorothea_two_way(sobj_wp,"study")
+    combined_markers = combine_markers_dorothea(markers.vs.all,markers.vs.eoe,markers.vs.wp,markers.vs.sa)
+
+    for(i in 1:nrow(combined_markers)){
+        doro_scores$pvalue[doro_scores$TF == rownames(combined_markers)[i]] = combined_markers$p_val_adj[i]
+    }
+    
+    final_doro = rbind(final_doro,doro_scores)
+}
+```
+
+```{r}
+saveRDS(final_doro,"progeny_dorothea/dorothea_epi.rds")
+```
+
+
+```{r}
+final_doro_sig = final_doro %>% filter(pvalue<0.05)
+# final_doro_sig = final_doro_sig %>% filter(cohensD > 0.1 | cohensD < -0.1)
+final_doro_sig$minus_log_pvalue = -1*log10(final_doro_sig$pvalue)
+final_doro_sig$cell_type <- factor(final_doro_sig$cell_type,levels = cell_types)
+ggplot(data=final_doro_sig,aes(x=cell_type,y=TF,fill=cohensD)) +
+    geom_tile()+ 
+    scale_fill_viridis(option = "magma") +
+    xlab("Cell subset") + theme_classic()+ 
+    theme(axis.text.x = element_text(angle = 90,hjust=1,size=3),
+         axis.text.y=element_text(size=12),
+         legend.position="None") +
+    labs(size="-log10(adj. pvalue)", fill="Cohen's D effect size \n between  EE &  not EE \n transcription factor activity scores")+
+    ggtitle("All DoRothEA TF Predictions") + ylab("Transcription Factor") + coord_flip()
+```
+
+
+```{r}
+final_doro_sig %>% filter(cell_type=="Tuft") %>% filter(cohensD>0)
+```
+
+
+```{r}
+final_doro_sig_select = final_doro_sig %>% filter(TF %in% c("GATA4","GATA6","STAT1","STAT6","PAX6","IRF1","IRF9",
+                                                           "MYC","TCF3","TCF4",
+                                                           "SMAD3","SMAD4",
+                                                           "ATF2","ATF4","ATF6"))
+
+ggplot(data=final_doro_sig_select,aes(x=cell_type,y=TF,color=cohensD,size=minus_log_pvalue)) +
+    geom_point() + 
+    scale_color_viridis(option="magma",limits=c(-2,2)) +
+    xlab("Cell subset") + theme_light() + ylab("Transcription Factor") +
+    theme(axis.text.x = element_text(angle = 45,hjust=1),legend.position="right") +
+    labs(size="-log10(adj. pvalue)", colour="Cohen's D effect\n size  between\n EE &  not EE\n pathway scores") +
+    ggtitle("Highlighted DoRothEA TF Predictions") + coord_flip()
+```
+
+
+
+
+
+
+
+
+

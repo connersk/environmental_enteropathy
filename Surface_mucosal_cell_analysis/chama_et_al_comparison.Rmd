@@ -1,0 +1,699 @@
+---
+title: "Comparison to Chama et al genes"
+output: html_notebook
+---
+
+# Loading in stuff
+
+```{r}
+library(Seurat)
+library(tidyverse)
+library(viridis)
+```
+
+Loading in EE data
+```{r}
+markers = readRDS("../heatmap_markers/combined_heatmap_wilcox_markers_oct21.rds")
+markers = markers %>% filter(p_val_adj < 0.05)
+combined = readRDS("combined_durban_eoe_resection_no_sa_HIV_aug18.rds")
+combined$orig.ident[combined$orig.ident=="Cancer_1D"] = "Resection_1D"
+combined$orig.ident[combined$orig.ident=="Cancer_2D"] = "Resection_2D"
+combined$orig.ident[combined$orig.ident=="Cancer_3D"] = "Resection_3D"
+
+combined$orig.ident[combined$orig.ident=="Durban_1D"] = "South_Africa_1D"
+combined$orig.ident[combined$orig.ident=="Durban_2D"] = "South_Africa_2D"
+combined$orig.ident[combined$orig.ident=="Durban_3D"] = "South_Africa_3D"
+combined$orig.ident[combined$orig.ident=="Durban_4D"] = "South_Africa_4D"
+combined$orig.ident[combined$orig.ident=="Durban_5D"] = "South_Africa_5D"
+```
+
+Loading in Chama et al data
+
+```{r}
+vh = read.table("DEGs//A-VS-B.GeneDiffExpFilter_short_vh_vs_long_vh.txt",sep="\t",header=1)
+vh$log2Ratio = -vh$log2Ratio.B.A.
+vh_up = vh %>% filter(log2Ratio > 0)
+vh_down = vh %>% filter(log2Ratio < 0)
+
+lr = read.table("DEGs//C-VS-D.GeneDiffExpFilter_high_LR_vs_low_LR.txt",sep="\t",header=1)
+lr$log2Ratio = -lr$log2Ratio.D.C.
+lr_up = lr %>% filter(log2Ratio > 0)
+lr_down = lr %>% filter(log2Ratio < 0)
+
+lps = read.table("DEGs//E-VS-F.GeneDiffExpFilter_high_LPS_vs_low_LPS.txt",sep="\t",header=1)
+lps$log2Ratio = -lps$log2Ratio.F.E.
+lps_up = lps %>% filter(log2Ratio > 0)
+lps_down = lps %>% filter(log2Ratio < 0)
+lps_down$log2Ratio  = -lps_down$log2Ratio.F.E.
+
+gdp = read.table("DEGs//G-VS-H.GeneDiffExpFilter_high_aGDP_vs_low_aGDP.txt",sep="\t",header=1)
+gdp$log2Ratio = -gdp$log2Ratio.H.G.
+gdp_up = gdp %>% filter(log2Ratio > 0)
+gdp_down = gdp %>% filter(log2Ratio < 0)
+
+```
+
+# Module scoring
+
+```{r}
+combined = AddModuleScore(combined,features=list(vh_up$Symbol),name="vh_up")
+combined = AddModuleScore(combined,features=list(vh_down$Symbol),name="vh_down")
+combined = AddModuleScore(combined,features=list(lr_up$Symbol),name="lr_up")
+combined = AddModuleScore(combined,features=list(lr_down$Symbol),name="lr_down")
+combined = AddModuleScore(combined,features=list(lps_up$Symbol),name="lps_up")
+combined = AddModuleScore(combined,features=list(lps_down$Symbol),name="lps_down")
+combined = AddModuleScore(combined,features=list(gdp_up$Symbol),name="gdp_up")
+combined = AddModuleScore(combined,features=list(gdp_down$Symbol),name="gdp_down")
+```
+
+```{r}
+epi = subset(combined,tier1=="Epi")
+# secretory = names(table(epi$tier4))[c(18,15,17,1:5,13,23)]
+# ent = names(table(epi$tier4))[c(12,8:9,11,10)]
+# stem = names(table(epi$tier4))[c(21,20,19)]
+# bulb = names(table(epi$tier4))[c(12:16)]
+# reordered_cell_types <- c(stem,ent,secretory,bulb)
+# epi$tier4 <- factor(epi$tier4, levels = reordered_cell_types)
+```
+
+```{r}
+names(table(epi$tier4))
+```
+
+
+
+```{r}
+  cell_type_colors = readRDS("../cell_type_colors.rds")
+  color = cell_type_colors[1:length(reordered_cell_types)]
+  corrected_color = data.frame(tier4=reordered_cell_types,color=color)
+```
+
+```{r}
+corrected_color
+```
+
+
+```{r}
+module_vln_plot_epi = function(module,sobj,reordered_cell_types){
+  cell_type_colors = readRDS("../cell_type_colors.rds")
+  color = cell_type_colors[1:length(reordered_cell_types)]
+  corrected_color = data.frame(tier4=reordered_cell_types,color=color)
+  corrected_color$tier4 = as.character(corrected_color$tier4)
+  
+  ordered_by_module = sobj@meta.data %>% group_by(tier4) %>% summarise(m=mean(!! rlang::sym(module)))
+  ordered_by_module = ordered_by_module[order(ordered_by_module$m,decreasing = T),]
+  ordered_by_module$tier4 = as.character(ordered_by_module$tier4)
+  
+  in_order = ordered_by_module %>% left_join(corrected_color,by="tier4")
+  
+  VlnPlot(sobj,module,group.by="tier4",pt.size=0.1,sort = T,cols=as.character(in_order$color))+NoLegend()+
+  theme(axis.text.x=element_text(size=8,angle=90,hjust=1))
+}
+
+
+module_vln_plot_combined = function(module,sobj){
+  VlnPlot(sobj,module,group.by="tier4",pt.size=0.0,sort = T,cols=c("#E78AC3",rep("grey",length(unique(combined$tier4))-1)))+NoLegend()+
+  theme(axis.text.x=element_text(size=8,angle=90,hjust=1))
+}
+```
+
+```{r}
+module_vln_plot_epi("vh_up1",epi,reordered_cell_types)
+module_vln_plot_epi("vh_down1",epi,reordered_cell_types)
+module_vln_plot_epi("lr_up1",epi,reordered_cell_types)
+module_vln_plot_epi("lr_down1",epi,reordered_cell_types)
+module_vln_plot_epi("lps_up1",epi,reordered_cell_types)
+module_vln_plot_epi("lps_down1",epi,reordered_cell_types)
+module_vln_plot_epi("gdp_up1",epi,reordered_cell_types)
+module_vln_plot_epi("gdp_down1",epi,reordered_cell_types)
+```
+
+```{r}
+# pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_vh_short_up.pdf",useDingbats = F,height=4.5)
+module_vln_plot_epi("vh_up1",epi,reordered_cell_types) +xlab("Cell subset") + ylab("Chama et al. DEGs module score:\nShortened villus height") + ggtitle("")
+# dev.off()
+
+# pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_lps_conc_down.pdf",useDingbats = F,height=4.5)
+# module_vln_plot_epi("lps_down1",epi,reordered_cell_types) +
+#     xlab("Cell subset") + ylab("Chama et al. DEGs Module score:\nLow plasma LPS") + ggtitle("")
+# dev.off()
+
+# pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_gdp_conc_down.pdf",useDingbats = F)
+# module_vln_plot_epi("gdp_down1",epi,reordered_cell_types) +
+#     xlab("Cell subset") + ylab("Chama et al. DEGs Module score:\nLow plasma anti-DGP IgG") + ggtitle("")
+# dev.off()
+```
+
+```{r}
+length(c("#E78AC3",rep("grey",length(unique(combined$tier4))-1)))
+length(unique(combined$tier4))
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+module_vln_plot_combined = function(module,sobj){
+  VlnPlot(sobj,module,group.by="tier4",pt.size=0.0,sort = T,cols=c("#E78AC3",rep("grey",length(unique(combined$tier4))-1)))+NoLegend()+
+  theme(axis.text.x=element_text(size=8,angle=90,hjust=1))
+}
+
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_vh_short_up_all.pdf",useDingbats = F,height=4.5)
+module_vln_plot_combined("vh_up1",combined) +
+    xlab("Cell subset") + ylab("Chama et al. DEGs module score:\nReduced villus height") + ggtitle("")
+dev.off()
+
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_lps_conc_down_all.pdf",useDingbats = F,height=4.5)
+module_vln_plot_combined("lps_down1",combined) +
+    xlab("Cell subset") + ylab("Chama et al. DEGs module score:\nReduced plasma LPS conc.") + ggtitle("")
+dev.off()
+# 
+# pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_gdp_conc_down_all.pdf",useDingbats = F)
+# module_vln_plot_combined("gdp_down1",combined) +
+#     xlab("Cell subset") + ylab("Module score") + ggtitle("Chama et al. DEGs: Low plasma anti-DGP IgG")
+# dev.off()
+```
+
+
+
+```{r}
+module_vln_plot_combined = function(module,sobj){
+  VlnPlot(sobj,module,group.by="SM",pt.size=0.0,sort = T,cols=c(cell_type_colors[3],rep("grey",length(unique(combined$tier4))-1)))+NoLegend()+
+  theme(axis.text.x=element_text(size=8,angle=90,hjust=1))
+}
+
+combined$SM ="All other subsets"
+combined$SM[combined$tier4=="Surface mucosal"]="Surface mucosal"
+
+  pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_vh_short_up_all_v_sm.pdf",useDingbats = F,height=4.5)
+module_vln_plot_combined("vh_up1",combined) +
+    xlab("Cell subset") + ylab("Chama et al. DEGs module score:\nReduced villus height") + ggtitle("")
+dev.off()
+
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_module_score_lps_conc_down_all_v_sm.pdf",useDingbats = F,height=4.5)
+module_vln_plot_combined("lps_down1",combined) +
+    xlab("Cell subset") + ylab("Chama et al. DEGs module score:\nReduced plasma LPS conc.") + ggtitle("")
+dev.off()
+```
+
+
+
+
+```{r}
+ordered_by_module
+```
+
+
+```{r}
+module_vln_plot("gdp_up1",combined)
+module_vln_plot("gdp_down1",combined)
+module_vln_plot("vh_up1",combined)
+module_vln_plot("vh_down1",combined)
+module_vln_plot("lr_up1",combined)
+module_vln_plot("lr_down1",combined)
+module_vln_plot("lps_up1",combined)
+module_vln_plot("lps_down1",combined)
+```
+
+
+# Module stat testing (updated Nov 2 2021)
+
+```{r}
+wilcox.test(combined$vh_up1[combined$tier4=="Surface mucosal"],combined$vh_up1[combined$tier4!="Surface mucosal"],alternative = "greater")
+```
+
+≈
+```{r}
+```
+
+
+# overlap testing
+
+## helpers
+
+```{r}
+sm_genes = markers %>% filter(cluster=="Bulb TFF1 GKN1") %>% filter(p_val_adj < 0.05)
+sm_genes = sm_genes$gene
+```
+
+```{r}
+get_overlap = function(chama_sig,sm_genes=sm_genes,combined=combined,markers=markers){
+  num_marker_genes = length(unique(markers$gene))
+  num_total_genes = length(rownames(combined))
+  num_chama_genes = length(unique(chama_sig$GeneID))
+  marker_overlap <-
+  matrix(c(num_marker_genes, sum(sm_genes%in%chama_sig$Symbol),num_total_genes -  num_marker_genes, num_chama_genes-sum(sm_genes%in%chama_sig$Symbol)),
+         ncol = 2)
+  rownames(marker_overlap) = c("scRNA-seq genes","Chama genes")
+  colnames(marker_overlap) = c("sm markers","sm markers")
+  fisher.test(marker_overlap, alternative = "two.sided")$p.value
+}
+```
+
+## running the show
+
+```{r}
+gene_lists = list(vh_up,vh_down,lr_up,lr_down,lps_up,lps_down,gdp_up,gdp_down)
+names = c("vh_up","vh_down","lr_up","lr_down","lps_up","lps_down","gdp_up","gdp_down")
+pvalues = rep(0,length(names))
+for(i in 1:length(names)){
+  pvalues[i] = get_overlap(gene_lists[[i]],sm_genes,combined,markers)
+}
+p_adj = p.adjust(pvalues)
+enrichments = data.frame(genelist=names,p_val =pvalues,p_val_adj=p_adj)
+```
+
+```{r}
+enrichments
+```
+
+# DUOX2 plot
+
+```{r}
+DotPlot(combined,features=c("DUOX2","DUOXA2",'LCN2'),group.by="tier4")
+```
+
+```{r}
+markers %>% filter(gene %in% c("DUOX2","DUOXA2","LCN2"))
+```
+
+
+
+
+
+# DEG plots
+
+```{r}
+chama_sig = vh_up
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(vh_up1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_vh_up.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple",limits=c(0,11.5))+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nwith reduced VH")+
+    ggtitle("") +lims(size=c(0,7)) #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+markers
+```
+
+
+
+```{r}
+chama_sig = vh_down
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(vh_down1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_vh_down.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple")+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nin shortenned chama")+
+    ggtitle("") #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+chama_sig = lr_up
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(lr_up1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_lr_up.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple")+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nin shortenned chama")+
+    ggtitle("") #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+chama_sig = lr_down
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(lr_down1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_lr_down.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple")+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nin shortenned chama")+
+    ggtitle("") #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+chama_sig = lps_up
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(lps_up1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_lps_up.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple")+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nin shortenned chama")+
+    ggtitle("") #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+library(cowplot)
+```
+
+
+```{r}
+chama_sig = lps_down
+
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(lps_down1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+chama_final$chama_log = -chama_final$chama_log
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_lps_down.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple",limits=c(0,11.5))+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nwith reduced plasma LPS")+
+    ggtitle("") + lims(size=c(0,7)) #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+max(vh_up$log2Ratio)
+```
+
+
+
+```{r}
+chama_sig = gdp_up
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(gdp_up1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_gdp_up.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple")+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nin shortenned chama")+
+    ggtitle("") #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+
+```{r}
+chama_sig = gdp_down
+chama_genes = as.character(chama_sig$Symbol)
+bulb_names = unique(markers$cluster)
+i = 1
+chama_overlap = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)),stringsAsFactors = F)
+for(i in 2:length(bulb_names)){
+    temp = data.frame(subset=rep(bulb_names[i],length(chama_genes)),gene=as.character(chama_genes),chama_log=chama_sig$log2Ratio,marker_logFC = rep(0,length(chama_genes)))
+    chama_overlap = rbind(chama_overlap,temp)
+}
+
+for(i in 1:length(bulb_names)){
+    sub_markers = markers %>% filter(cluster==bulb_names[i])
+    for(j in 1:length(chama_genes)){
+        if(chama_genes[j] %in% sub_markers$gene){
+            chama_overlap$marker_logFC[chama_overlap$subset==bulb_names[i]&chama_overlap$gene==chama_genes[j]] = sub_markers$avg_logFC[sub_markers$gene==chama_genes[j]]
+        }
+    }
+}
+
+chama_overlap$subset = factor(chama_overlap$subset,levels=bulb_names)
+chama_final = chama_overlap %>% filter(marker_logFC !=0)
+chama_final$subset = as.character(chama_final$subset)
+chama_final = chama_final %>% mutate(subset=replace(subset, subset=="Bulb TFF1 GKN1", "Epi DPCR1 TFF1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb TFF2 LYZ", "Epi LYZ TFF2")) %>%
+    mutate(subset=replace(subset, subset=="Bulb OLFM4", "Epi LYZ DMBT1")) %>%
+    mutate(subset=replace(subset, subset=="Bulb FABP1", "Epi FABP1 CD55")) %>%
+    mutate(subset=replace(subset, subset=="Bulb PTMA", "Epi FABP1 PTMA"))
+
+in_order = combined@meta.data %>% group_by(tier4) %>% summarise(m=mean(gdp_down1))#UGH need to replace
+in_order = in_order[order(in_order$m,decreasing = T),]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+ordered_by_module = in_order$tier4[in_order$tier4 %in% chama_final$subset]
+chama_final$subset = factor(chama_final$subset,levels=ordered_by_module)
+pdf("~/zambia_eed_figures/diff-comp-figure/chama_gdp_down.pdf",useDingbats = F)
+ggplot(data=chama_final,aes(x=subset,y=gene,color=chama_log,size=marker_logFC))+
+    geom_point(shape=15) +
+    xlab("Cell subset") + theme_light() + ylab("Gene")+ theme_cowplot()+
+   theme(axis.text.x = element_text(angle = 45,hjust=1))+
+    scale_color_gradient(low = "lightgrey", high = "purple")+
+    labs(size="log2-fold change in\nexpression in subset\nrelative to all other\nsubsets", colour="Chama et al.\nbulk RNA-seq:\nlog2-fold change\nin shortenned chama")+
+    ggtitle("") #+ 
+#     coord_flip()
+dev.off()
+
+```
+
+```{r}
+temp = subset(combined,tier4%in%c("Goblet","Mucosal neck","Surface mucosal"))
+temp$tier4 = factor(temp$tier4,levels=c("Goblet","Mucosal neck","Surface mucosal"))
+Idents(temp) <- "tier4"
+pdf("~/zambia_eed_figures/diff-comp-figure/updated_3_subset_dotplot.pdf",useDingbats = F,height=4,width=6)
+DotPlot(temp,features = rev(c("MUC2","MUC5AC","TFF1","TFF2","TFF3"))) + ylab("Cell subset") + xlab("Gene") +
+  theme(axis.text.x=element_text(angle=90))
+dev.off()
+```
+
+
+```{r}
+
+```
+

@@ -1,0 +1,224 @@
+---
+title: "Kracken results"
+output: html_notebook
+---
+
+Wait so there is only really one patient with a significant number of SMCsss....
+
+
+```{r}
+library(tidyverse)
+library(cowplot)
+library(Seurat)
+```
+
+```{r}
+combined = readRDS("../reseq_analysis/figures/combined_durban_eoe_resection_no_sa_HIV_aug18.rds")
+```
+
+```{r}
+table(combined$PID)
+```
+
+
+```{r}
+get_significance_from_permutation = function(use_this_cell_type,measured_corelations,permutation_type,permutation_matrix){
+  if(permutation_type=="pearson"){
+    measured_correlation = measured_corelations$pearson[measured_corelations$cell_type==use_this_cell_type]
+  }
+  else if(permutation_type=="spearman"){
+    measured_correlation = measured_corelations$spearman[measured_corelations$cell_type==use_this_cell_type]
+  }
+ return(sum(permutation_matrix[use_this_cell_type,] > measured_correlation)/(ncol(permutation_matrix))) 
+}
+```
+# Bacterial results
+
+```{r}
+kracken_merged = read.csv("~/Downloads/e5c68aa5-c25b-496b-b367-0143a72defc4_merge_metagenomics_f1060fa4-4238-44a6-aac2-420263307ee5_call-aggregate_metagenomics_reports_aggregate_taxa_summary_Bacteria_by_species_top_200_by_sample.csv")
+old_orig = c()
+for(i in 1:nrow(kracken_merged)){
+  old_orig = c(old_orig, strsplit(strsplit(kracken_merged$sample[i],"/")[[1]][5],"[.]")[[1]][1])
+}
+```
+
+```{r}
+kracken_merged = read.csv("~/Downloads/e5c68aa5-c25b-496b-b367-0143a72defc4_merge_metagenomics_f1060fa4-4238-44a6-aac2-420263307ee5_call-aggregate_metagenomics_reports_aggregate_taxa_summary_Bacteria_by_species_top_200_by_sample.csv")
+i=1
+old_orig = c()
+for(i in 1:nrow(kracken_merged)){
+  old_orig = c(old_orig, strsplit(strsplit(kracken_merged$sample[i],"/")[[1]][5],"[.]")[[1]][1])
+}
+kracken_merged$old_orig = old_orig
+kracken_merged$old_orig[1] ="0115D"
+kracken_merged$old_orig[2] ="0128D"
+kracken_merged$old_orig[3] ="0228D"
+kracken_merged$old_orig[4] ="09_29D"
+kracken_merged$old_orig[5] ="11_06D"
+kracken_merged$old_orig[6] ="11_08D"
+
+kracken_merged$old_orig[34] ="South_Africa_5D"
+kracken_merged$old_orig[35] ="South_Africa_4D"
+kracken_merged$old_orig[36] = "Durban_HIV+_1D"
+kracken_merged$old_orig[37] = "Durban_HIV+_2D"
+kracken_merged$old_orig[38] = "Durban_HIV+_3D"
+kracken_merged$old_orig[39] = "Durban_HIV+_4D"
+kracken_merged$old_orig[40] = "South_Africa_3D"
+kracken_merged$old_orig[41] ="Durban_HIV+_4D"
+kracken_merged$old_orig[42] ="South_Africa_2D"
+kracken_merged$old_orig[43] ="South_Africa_1D"
+
+kracken_merged$study = ""
+kracken_merged$study[1:3] = "Resection"
+kracken_merged$study[4:6] = "EoE"
+kracken_merged$study[7:33] = "EE"
+kracken_merged$study[c(34,35,40,42,43)] = "South Africa"
+
+kracken_merged$study[c(36:39,41)] = "Durban HIV+"
+
+```
+
+```{r}
+disease_colors = readRDS("../reseq_analysis/disease_colors.rds")
+region_colors = readRDS("../reseq_analysis/region_colors.rds")
+```
+
+```{r}
+assign_region = function(orig){
+  if(substr(orig,5,5) == "B"){
+    return("Bulb")
+  }else if(substr(orig,5,5) == "D"){
+    return("Duodenum")
+  }else if(substr(orig,5,5) == "J"){
+    return("Jejunum")
+  }
+}
+```
+
+
+```{r}
+# Violine plotting the number of Helicobacter pylori reads by intestinal region with the EE cohort
+
+temp = kracken_merged %>% filter(study=="EE")
+regions = rep("",nrow(temp))
+for(i in 1:length(regions)){
+  regions[i] = assign_region(temp$old_orig[i])
+}
+temp$region = regions
+
+orig_key = combined@meta.data %>% distinct_at(vars(orig.ident),.keep_all = T)%>% select(orig.ident,old_orig)
+
+temp = temp %>% left_join(orig_key,by="old_orig")
+
+temp$region = factor(temp$region,levels=c("Bulb","Duodenum","Jejunum"))
+# pdf("~/zambia_eed_figures/diff-comp-figure/kracken_EE_by_region.pdf",useDingbats = F,height=3,width=4)
+ggplot(temp,aes(x=region,y=Helicobacter.pylori.ct)) + geom_violin(aes(fill=region)) + geom_point(size=0.5) + geom_text(aes(label=orig.ident),size=2) +
+  scale_fill_manual(values = region_colors) + theme_cowplot() +
+  theme(axis.text.x=element_text(size=6),
+        axis.title.x = element_blank(),
+        axis.text.y=element_text(size=6),
+        axis.title.y = element_text(size=8),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6)) +
+  ylab("Number of Helicobacter pylori reads detected")
+# dev.off()
+
+# Testing each sample in the bulb against the other regions and then doing a multiple testing correction to see if any bulb samples are uniquely higher
+
+
+
+
+bulb_samples = temp$orig.ident[temp$region=="Bulb"]
+pvals = rep(1,length(bulb_samples))
+for(i in 1:length(pvals)){
+  pvals[i] = t.test(temp$Helicobacter.pylori.ct[temp$region!="Bulb"],mu=temp$Helicobacter.pylori.ct[temp$orig.ident==bulb_samples[i]])$p.value
+}
+adj_pvals = p.adjust(pvals,method="bonferroni")
+
+bulb_pval_table = data.frame(sample =bulb_samples,pvalue=pvals,adj_pvalue=adj_pvals)
+bulb_pval_table
+
+```
+
+Ok so only EE_HIV_2B and EE_8B are significant 
+
+```{r}
+temp = kracken_merged %>% filter(study!="Durban HIV+")
+temp$study = factor(temp$study,levels=c("EE","EoE","Resection","Durban"))
+orig_key = combined@meta.data %>% filter(HIV.HTLV.=="N" | study=="EE") %>% distinct_at(vars(orig.ident),.keep_all = T)%>% select(orig.ident,old_orig)
+temp = temp %>% left_join(orig_key,by="old_orig")
+temp$orig.ident[temp$old_orig=="Durban_5D"] = "Durban_5D"
+temp$orig.ident[temp$old_orig=="Durban_4D"] = "Durban_4D"
+temp$orig.ident[temp$old_orig=="Durban_3D"] = "Durban_3D"
+```
+
+```{r}
+pdf("~/zambia_eed_figures/diff-comp-figure/kracken_by_study.pdf",useDingbats = F,height=3,width=4)
+temp = kracken_merged %>% filter(study!="Durban HIV+")
+temp$study = factor(temp$study,levels=c("EE","EoE","Resection","South Africa"))
+orig_key = combined@meta.data %>% filter(HIV.HTLV.=="N" | study=="EE") %>% distinct_at(vars(orig.ident),.keep_all = T)%>% select(orig.ident,old_orig)
+temp = temp %>% left_join(orig_key,by="old_orig")
+temp$orig.ident[temp$old_orig=="South_Africa_5D"] = "South_Africa_5D"
+temp$orig.ident[temp$old_orig=="South_Africa_4D"] = "South_Africa_4D"
+temp$orig.ident[temp$old_orig=="South_Africa_3D"] = "South_Africa_3D"
+temp$orig.ident[37] = "South_Africa_2D"
+temp$orig.ident[38] = "South_Africa_1D"
+ggplot(temp,aes(x=study,y=Helicobacter.pylori.ct)) + geom_violin(aes(fill=study)) + geom_point(size=0.5) + geom_text(aes(label=orig.ident),size=2) +
+  scale_fill_manual(values = disease_colors[c(1,3:5)]) + theme_cowplot() +
+  theme(axis.text.x=element_text(size=6),
+        axis.title.x = element_blank(),
+        axis.text.y=element_text(size=6),
+        axis.title.y = element_text(size=8),
+        legend.title = element_blank(),
+        legend.text = element_text(size=6)) +
+  ylab("Number of Helicobacter pylori reads detected")
+dev.off()
+
+# Testing each sample in EE against the other cohorts and then doing a multiple testing correction to see if any EE samples are uniquely higher
+
+
+
+
+ee_samples = temp$orig.ident[temp$study=="EE"]
+pvals = rep(1,length(ee_samples))
+for(i in 1:length(pvals)){
+  pvals[i] = t.test(temp$Helicobacter.pylori.ct[temp$study!="EE"],mu=mean(temp$Helicobacter.pylori.ct[temp$orig.ident==ee_samples[i]]))$p.value
+}
+adj_pvals = p.adjust(pvals,method="bonferroni")
+
+ee_pval_table = data.frame(sample =ee_samples,pvalue=pvals,adj_pvalue=adj_pvals)
+ee_pval_table[order(ee_pval_table$adj_pvalue),]
+```
+
+
+```{r}
+# Counting the number of each cell type
+cell_type_counts = combined@meta.data %>% count(orig.ident,tier4,.drop=F) %>% 
+  spread(tier4,n,fill = 0)
+# fix the column names so that it's less confusing when I add count data into data frame
+for(i in 2:length(cell_type_counts)){
+  colnames(cell_type_counts)[i] = paste0(colnames(cell_type_counts)[i],"_counts")
+}
+
+# Adding the kracken data  and cell counts to the study metadata
+kracken_meta = subset(combined,study!="Durban")@meta.data %>% left_join(kracken_merged) %>% distinct_at("orig.ident",.keep_all = T) %>% 
+  left_join(cell_type_counts,by="orig.ident")
+```
+
+## Looking at H. pylori reads by EE vs U.S.
+
+
+```{r}
+kracken_meta$Helicobacter.pylori.ct
+```
+
+```{r}
+ggplot(kracken_meta,aes(x=study,y=Helicobacter.pylori.ct)) + geom_violin() + geom_point() + geom_text(aes(label=orig.ident))
+```
+
+```{r}
+kracken_meta
+```
+
+
+
